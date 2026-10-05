@@ -1,0 +1,5 @@
+# restart가 아닌 reload: 열려 있는 SSH 세션을 끊지 않는다
+- name: SSH 설정 다시 읽기
+  ansible.builtin.systemd_service:
+    name: ssh.service
+    state: reloaded

@@ -10,7 +10,8 @@ N100 미니 PC를 24시간 돌아가는 **CI/CD · 모니터링 · PR 프리뷰(
 - SSH 접속 완료 (사용자 `june`, 키 인증)
 - BIOS: State After G3 → S0, WoL, Fast Boot Disabled — 사용자가 직접 설정 (원격 불가)
 - OS: Ubuntu 24.04.4 LTS Server. 네트워크는 netplan + systemd-networkd가 관리. NetworkManager는 비활성화(netplan과 Wi-Fi 장치 충돌)
-- 호스트명: `host`
+  - 데스크톱(lightdm)·xrdp·Cockpit 비활성화, 부팅은 `multi-user.target`
+- 호스트명: `homelab`
 - 디스크: SATA SSD 512GB, LVM 루트 466G (ext4)
 - 네트워크: 유선 `enp3s0` 192.168.35.235 (DHCP, MAC 68:1d:ef:3f:d7:fe, metric 110), `enp1s0` 미사용
   - Wi-Fi `wlp2s0`는 예비 경로(metric 600). 유선 RTL8168h에서 원인 미상 링크 끊김 이력 있음(2026-10-05)
@@ -61,8 +62,9 @@ homelab/
 ## 진행 단계 (각 단계는 확인 기준 통과 후 다음으로)
 0. ✅ **repo 뼈대 + 관리 PC** — WSL2 도구 설치, `.gitignore`, pre-commit(gitleaks·SOPS 암호화 검사·shellcheck·terraform fmt)
    - 확인: 가짜 시크릿 커밋 시 차단됨 (2026-10-05)
-1. **호스트 하드닝 (Ansible)** — SSH 키 인증만, 패스워드·root 로그인 차단, ufw, unattended-upgrades, 타임존 Asia/Seoul, WoL 영구 설정
+1. ✅ **호스트 하드닝 (Ansible)** — SSH 키 인증만, 패스워드·root 로그인 차단, ufw, unattended-upgrades, 타임존 Asia/Seoul, WoL 영구 설정
    - 확인: 새 세션으로 SSH 재접속 성공, 패스워드 로그인 거부
+   - 결과: 새 세션 접속, 비밀번호·root 로그인 거부, LAN에서 22 외 포트 차단, 재실행 시 changed=0 (2026-10-05)
 2. **Tailscale** — 확인: 외부망(핫스팟)에서 SSH 접속
 3. **S3 버킷 + IAM (수동, runbook 기록)** — `tfstate`, `k3s-backup` 버킷 / 버킷별 최소 권한 IAM / 버전 관리·암호화·퍼블릭 차단·수명 주기
 4. **k3s 설치 (Ansible)** — 위 옵션 포함

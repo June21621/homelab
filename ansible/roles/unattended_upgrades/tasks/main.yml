@@ -1,0 +1,24 @@
+# 보안 업데이트 자동 설치. 자동 재부팅은 하지 않음 (커널 업데이트 후 재부팅은 직접)
+- name: 매일 패키지 목록 갱신 + 보안 업데이트
+  ansible.builtin.copy:
+    dest: /etc/apt/apt.conf.d/20auto-upgrades
+    content: |
+      APT::Periodic::Update-Package-Lists "1";
+      APT::Periodic::Unattended-Upgrade "1";
+    mode: "0644"
+
+- name: 자동 재부팅 끔, 안 쓰는 커널 정리
+  ansible.builtin.copy:
+    dest: /etc/apt/apt.conf.d/52homelab-unattended-upgrades
+    content: |
+      Unattended-Upgrade::Automatic-Reboot "false";
+      Unattended-Upgrade::Remove-Unused-Kernel-Packages "true";
+      Unattended-Upgrade::Remove-Unused-Dependencies "true";
+    mode: "0644"
+
+- name: 자동 업데이트 타이머 켜기
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+  loop: [apt-daily.timer, apt-daily-upgrade.timer]

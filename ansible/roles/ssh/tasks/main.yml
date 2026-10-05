@@ -1,0 +1,31 @@
+# 잠김 방지 순서: 키 등록 → 설정 검증(sshd -t) → reload (기존 세션은 유지됨)
+- name: 관리자 공개키 등록
+  ansible.posix.authorized_key:
+    user: "{{ admin_user }}"
+    key: "{{ admin_authorized_keys | join('\n') }}"
+    exclusive: true
+
+# sshd는 같은 옵션이 여러 번 나오면 먼저 읽은 값을 쓴다.
+# 50-cloud-init.conf(PasswordAuthentication yes)보다 앞서 읽히도록 10-으로 둔다.
+- name: SSH 하드닝 설정
+  ansible.builtin.template:
+    src: 10-homelab.conf.j2
+    dest: /etc/ssh/sshd_config.d/10-homelab.conf
+    mode: "0644"
+    validate: /usr/sbin/sshd -t -f %s
+  notify: SSH 설정 다시 읽기
+
+- name: 최종 적용값 확인
+  ansible.builtin.command: /usr/sbin/sshd -T
+  register: ssh_sshd_effective
+  check_mode: false  # 조회 전용이라 --check에서도 실행
+  changed_when: false
+
+- name: 비밀번호·root 로그인이 꺼졌는지 검증
+  ansible.builtin.assert:
+    that:
+      - "'passwordauthentication no' in ssh_sshd_effective.stdout_lines"
+      - "'permitrootlogin no' in ssh_sshd_effective.stdout_lines"
+      - "'kbdinteractiveauthentication no' in ssh_sshd_effective.stdout_lines"
+    fail_msg: 다른 설정 파일이 하드닝 값을 덮어쓰고 있음
+  when: not ansible_check_mode  # 미리 보기에선 설정 파일이 실제로 바뀌지 않으므로 검증 생략

@@ -1,0 +1,39 @@
+# 잠김 방지 순서: 허용 규칙을 먼저 넣고 → 마지막에 기본 차단 + 활성화
+- name: SSH 허용 (LAN)
+  community.general.ufw:
+    rule: allow
+    port: "22"
+    proto: tcp
+    from_ip: "{{ lan_subnet }}"
+    comment: ssh-lan
+
+- name: SSH 허용 (Tailscale)
+  community.general.ufw:
+    rule: allow
+    port: "22"
+    proto: tcp
+    interface: tailscale0
+    direction: in
+    comment: ssh-tailscale
+
+# 없어도 동작하지만(릴레이 경유) 열어두면 직접 연결돼 빠르다
+- name: Tailscale 직접 연결 포트
+  community.general.ufw:
+    rule: allow
+    port: "41641"
+    proto: udp
+    comment: tailscale
+
+- name: 나가는 연결 허용
+  community.general.ufw:
+    default: allow
+    direction: outgoing
+
+- name: 들어오는 연결 기본 차단
+  community.general.ufw:
+    default: deny
+    direction: incoming
+
+- name: 방화벽 켜기
+  community.general.ufw:
+    state: enabled

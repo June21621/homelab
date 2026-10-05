@@ -1,0 +1,14 @@
+# --- base ---
+hostname: homelab
+timezone: Asia/Seoul
+
+# --- network ---
+lan_nic: enp3s0
+lan_subnet: 192.168.35.0/24
+
+# --- ssh ---
+admin_user: june
+# 공개키는 커밋해도 안전하다 (개인키는 각 PC에만 있음)
+admin_authorized_keys:
+  - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILyh7Slh8RQHDUyiUNKi6fCi9/JEtfP8LR4Z9rTixZ8u homeserver"
+  - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIL0kKT0Uu9nxZnEMlv50vDQuVthSF4WqrxigDbyT10b/ homelab-admin@wsl"

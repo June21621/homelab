@@ -22,6 +22,25 @@ log "apt 기본 패키지"
 sudo apt-get update -qq
 sudo apt-get install -y -qq age shellcheck curl gnupg unzip ca-certificates make
 
+# --- ssh-agent ---------------------------------------------------------------
+# Ansible은 SSH 키 passphrase를 물을 수 없어 agent가 필요하다.
+# eval 없이 고정 소켓 경로를 쓰고, 키는 agent에 1시간만 올려 둔다(make host가 필요할 때 ssh-add -t 1h).
+log "ssh-agent 고정 소켓을 ~/.bashrc에 등록"
+marker='# >>> homelab ssh-agent >>>'
+if ! grep -qxF "${marker}" "${HOME}/.bashrc"; then
+  cat >> "${HOME}/.bashrc" <<'BASHRC'
+
+# >>> homelab ssh-agent >>>
+export SSH_AUTH_SOCK="${XDG_RUNTIME_DIR:-$HOME/.ssh}/ssh-agent.socket"
+ssh-add -l >/dev/null 2>&1
+if [ $? -eq 2 ]; then  # 2 = agent 없음 (0 = 키 있음, 1 = 키 없음)
+  rm -f "$SSH_AUTH_SOCK"
+  ssh-agent -a "$SSH_AUTH_SOCK" >/dev/null
+fi
+# <<< homelab ssh-agent <<<
+BASHRC
+fi
+
 # --- WSL: Windows 드라이브(/mnt/c) 권한 --------------------------------------
 # 기본값은 파일 소유자가 root(uid=0)라 git이 chmod를 못 하고 Ansible이 ansible.cfg를 무시한다.
 # metadata로 리눅스 권한을 저장하고 소유자를 현재 사용자로 맞춘다. 적용엔 `wsl --shutdown` 필요.

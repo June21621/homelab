@@ -1,0 +1,8 @@
+# 미니 PC 전체 구성. 실행: make host
+- name: 미니 PC 호스트 구성
+  hosts: homelab
+  roles:
+    - base
+    - ssh
+    - firewall
+    - unattended_upgrades

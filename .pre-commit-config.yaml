@@ -33,6 +33,13 @@ repos:
 
   - repo: local
     hooks:
+      # 관리 PC에 설치된 ansible-lint(버전 고정)를 쓴다. ansible.cfg 경로는 Makefile과 같은 이유로 명시
+      - id: ansible-lint
+        name: ansible-lint
+        entry: env ANSIBLE_CONFIG=ansible/ansible.cfg ansible-lint ansible/
+        language: system
+        pass_filenames: false
+        files: ^ansible/
       - id: sops-encrypted
         name: secrets/ 아래 파일은 SOPS 암호화 필수
         entry: scripts/check-sops-encrypted.sh
