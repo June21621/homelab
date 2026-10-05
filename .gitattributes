@@ -1,0 +1,4 @@
+# Windows 폴더에 두고 WSL에서 쓰므로 줄바꿈을 LF로 고정 (CRLF면 셸 스크립트가 깨짐)
+* text=auto eol=lf
+*.png binary
+*.jpg binary

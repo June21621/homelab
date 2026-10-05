@@ -1,0 +1,40 @@
+# 커밋 전 자동 검사. 설치: make hooks  /  전체 검사: make lint
+# 버전은 `pre-commit autoupdate`로만 올린다.
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.0
+    hooks:
+      - id: gitleaks
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: detect-private-key
+      - id: check-added-large-files
+        args: [--maxkb=500]
+      - id: check-merge-conflict
+      - id: check-yaml
+        args: [--allow-multiple-documents]
+        exclude: ^gitops/.*templates/
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: mixed-line-ending
+        args: [--fix=lf]
+
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.11.0.1-1
+    hooks:
+      - id: shellcheck
+
+  - repo: https://github.com/antonbabenko/pre-commit-terraform
+    rev: v1.109.2
+    hooks:
+      - id: terraform_fmt
+
+  - repo: local
+    hooks:
+      - id: sops-encrypted
+        name: secrets/ 아래 파일은 SOPS 암호화 필수
+        entry: scripts/check-sops-encrypted.sh
+        language: script
+        files: (^|/)secrets/

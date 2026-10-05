@@ -1,0 +1,42 @@
+# --- 시크릿 (평문 절대 커밋 금지) ---
+*.agekey
+age.key
+keys.txt
+.env
+.env.*
+*.pem
+*.key
+*.dec.yaml
+*.dec.yml
+kubeconfig
+*.kubeconfig
+
+# --- Terraform ---
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+crash.*.log
+*.tfvars
+!*.example.tfvars
+.terraform.tfstate.lock.info
+
+# --- Ansible ---
+*.retry
+.ansible/
+
+# --- Python / uv ---
+__pycache__/
+*.pyc
+.venv/
+
+# --- 에디터·OS ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- Claude Code 로컬 설정 ---
+.claude/settings.local.json
