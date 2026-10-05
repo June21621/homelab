@@ -9,10 +9,11 @@ N100 미니 PC를 24시간 돌아가는 **CI/CD · 모니터링 · PR 프리뷰(
 - Firebat T8, Intel N100 4코어, RAM 16GB (단일 노드)
 - SSH 접속 완료 (사용자 `june`, 키 인증)
 - BIOS: State After G3 → S0, WoL, Fast Boot Disabled — 사용자가 직접 설정 (원격 불가)
-- OS: Ubuntu 24.04.4 LTS Server (lightdm·NetworkManager가 있으나 NIC는 netplan + systemd-networkd가 관리)
+- OS: Ubuntu 24.04.4 LTS Server. 네트워크는 netplan + systemd-networkd가 관리. NetworkManager는 비활성화(netplan과 Wi-Fi 장치 충돌)
 - 호스트명: `host`
 - 디스크: SATA SSD 512GB, LVM 루트 466G (ext4)
-- 네트워크: 유선 `enp3s0` 192.168.35.235 (DHCP, MAC 68:1d:ef:3f:d7:fe), `enp1s0` 미사용, Wi-Fi 비활성화
+- 네트워크: 유선 `enp3s0` 192.168.35.235 (DHCP, MAC 68:1d:ef:3f:d7:fe, metric 110), `enp1s0` 미사용
+  - Wi-Fi `wlp2s0`는 예비 경로(metric 600). 유선 RTL8168h에서 원인 미상 링크 끊김 이력 있음(2026-10-05)
 - Tailscale: 100.124.153.34 (설치됨)
 - 절전 차단됨 (sleep/suspend/hibernate target mask)
 

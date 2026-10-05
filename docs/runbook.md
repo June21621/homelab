@@ -25,6 +25,14 @@
 - Wi-Fi 제거: `/etc/netplan/50-cloud-init.yaml` → `/root/50-cloud-init.yaml.bak`,
   `/etc/cloud/cloud.cfg.d/99-disable-network-config.cfg` 생성(`network: {config: disabled}`), `netplan try` → 1단계로 옮길 예정
 - WSL 공개키(`homelab-admin@wsl`)를 `authorized_keys`에 추가 → 1단계로 옮길 예정
+- 12:42~14:09 KST 유선(`enp3s0`, RTL8168h/r8169) 링크 끊김 → 강제 재부팅으로 복구
+  - 원인 미확정: EEE는 꺼져 있었고 케이블·공유기는 건드리지 않음. 커널 오류 로그 없음
+  - Wi-Fi를 제거해 둔 탓에 예비 경로가 없어 원격 접속이 통째로 끊겼음
+- Wi-Fi 예비 경로 복구: `/root/50-cloud-init.yaml.bak`에서 Wi-Fi 부분만 꺼내
+  `/etc/netplan/60-wifi-fallback.yaml`(0600, `route-metric: 600`) 생성 → `netplan try`
+- NetworkManager·NetworkManager-wait-online·wpa_supplicant.service 비활성화:
+  NetworkManager가 Wi-Fi 장치를 먼저 차지해 netplan의 Wi-Fi(`netplan-wpa-wlp2s0`)가 시작 실패하던 충돌 해소. 1단계 플레이북에도 반영
+- 장애 전환 테스트 통과: 랜선 분리 시 기본 경로가 Wi-Fi로 전환되고 Tailscale로 재접속됨, 재연결 시 유선(metric 110)으로 복귀
 
 ### 날짜 미상 (이 기록 이전)
 - Tailscale 설치 (100.124.153.34) → 2단계에서 플레이북으로 옮길 예정
@@ -32,3 +40,5 @@
 ## 3. 남은 수동 작업
 - [ ] 공유기 DHCP 예약: `68:1d:ef:3f:d7:fe` → `192.168.35.235`
 - [ ] Tailscale 관리 콘솔에서 이 기기의 key expiry 끄기
+- [ ] 6단계: Wi-Fi 예비 경로 설정(비밀번호 포함)을 SOPS + Ansible로 옮기기
+- [ ] 7단계: 유선 링크 끊김 알림
