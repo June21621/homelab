@@ -7,6 +7,10 @@
 - Ubuntu Server 24.04 설치, 사용자 `june`, OpenSSH 서버 포함
   - 디스크 설정에서 루트 LV를 디스크 전체로 잡기 (기본값은 100G만 잡힘)
 - 관리 PC 공개키를 `~/.ssh/authorized_keys`에 등록
+- Tailscale 재등록: 관리 콘솔에서 인증 키 생성(태그 `tag:server`, 1회용) →
+  첫 `make host`는 `ansible/inventory/hosts.yml`의 `ansible_host`를 LAN IP(192.168.35.235)로 바꿔 실행 →
+  실행 중 키 입력(또는 `TAILSCALE_AUTHKEY` 환경변수) → 끝나면 새 Tailscale IP로 inventory 갱신
+- Tailscale 버전을 올릴 때도 LAN IP로 실행 (tailscaled 재시작으로 Tailscale 경유 연결이 끊김)
 
 ### 관리 PC (Windows + WSL2)
 - PowerShell: `wsl --update` → `wsl --install -d Ubuntu-24.04` → `wsl --set-default Ubuntu-24.04`
@@ -35,11 +39,18 @@
   NetworkManager가 Wi-Fi 장치를 먼저 차지해 netplan의 Wi-Fi(`netplan-wpa-wlp2s0`)가 시작 실패하던 충돌 해소. 1단계 플레이북에도 반영
 - 장애 전환 테스트 통과: 랜선 분리 시 기본 경로가 Wi-Fi로 전환되고 Tailscale로 재접속됨, 재연결 시 유선(metric 110)으로 복귀
 
+### 2026-10-08
+- Tailscale 관리 콘솔: 미니 PC(`kjt-home-server`) key expiry 끔
+- Tailscale ACL: `tagOwners`에 `tag:server` → `autogroup:admin` 추가 (Definitions → Tags). Terraform 도입 후 이관 예정
+- Tailscale 관리 콘솔: 미니 PC에 `tag:server` 부착 (Machines → Edit ACL tags)
+- 외부망 확인: 개인 PC를 핫스팟에 연결, LAN 주소 ping 불가 확인 후 Tailscale로 SSH 접속 성공
+
 ### 날짜 미상 (이 기록 이전)
 - Tailscale 설치 (100.124.153.34) → 2단계에서 플레이북으로 옮길 예정
 
 ## 3. 남은 수동 작업
 - [ ] 공유기 DHCP 예약: `68:1d:ef:3f:d7:fe` → `192.168.35.235`
-- [ ] Tailscale 관리 콘솔에서 이 기기의 key expiry 끄기
+- [x] Tailscale 관리 콘솔에서 이 기기의 key expiry 끄기 (2026-10-08)
+- [ ] Terraform 도입 후 Tailscale ACL(tagOwners 포함)을 Terraform으로 이관
 - [ ] 6단계: Wi-Fi 예비 경로 설정(비밀번호 포함)을 SOPS + Ansible로 옮기기
 - [ ] 7단계: 유선 링크 끊김 알림

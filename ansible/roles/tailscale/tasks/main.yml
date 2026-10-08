@@ -1,0 +1,77 @@
+# Tailscale 설치·등록. 이미 로그인된 기기면 등록은 건너뛰고 태그만 검증한다.
+# 주의: Ansible이 Tailscale을 통해 접속 중일 때 버전을 올리면 tailscaled 재시작으로 연결이 끊긴다
+#       → 버전 업그레이드는 inventory를 LAN IP로 바꿔 실행할 것
+
+# 해시 고정: 바꿔치기된 키를 막고, 기존 파일과 비교해 --check에서도 정확히 ok/changed를 보고한다.
+# Tailscale이 키를 교체하면 여기서 실패한다 → 공지 확인 후 해시 갱신
+- name: Tailscale 저장소 서명 키
+  ansible.builtin.get_url:
+    url: "https://pkgs.tailscale.com/stable/ubuntu/{{ ansible_facts.distribution_release }}.noarmor.gpg"
+    dest: /usr/share/keyrings/tailscale-archive-keyring.gpg
+    checksum: "sha256:{{ tailscale_keyring_sha256 }}"
+    mode: "0644"
+
+- name: Tailscale 저장소
+  ansible.builtin.copy:
+    dest: /etc/apt/sources.list.d/tailscale.list
+    content: |
+      # Tailscale packages for ubuntu {{ ansible_facts.distribution_release }}
+      deb [signed-by=/usr/share/keyrings/tailscale-archive-keyring.gpg] https://pkgs.tailscale.com/stable/ubuntu {{ ansible_facts.distribution_release }} main
+    mode: "0644"
+
+- name: Tailscale 설치 (버전 고정)
+  ansible.builtin.apt:
+    name: "tailscale={{ tailscale_version }}"
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Tailscale 데몬 켜기
+  ansible.builtin.systemd_service:
+    name: tailscaled.service
+    enabled: true
+    state: started
+
+- name: 현재 Tailscale 상태
+  ansible.builtin.command: tailscale status --json
+  register: tailscale_status_raw
+  check_mode: false  # 조회 전용이라 --check에서도 실행
+  changed_when: false
+  failed_when: false
+
+- name: 상태 해석
+  ansible.builtin.set_fact:
+    tailscale_running: "{{ (tailscale_status_raw.stdout | from_json).BackendState | default('') == 'Running' }}"
+    tailscale_current_tags: "{{ (tailscale_status_raw.stdout | from_json).Self.Tags | default([], true) }}"
+  when: tailscale_status_raw.rc == 0
+
+# --- 처음 등록할 때만 (재구축 시) ---
+- name: 등록용 인증 키 입력 받기
+  ansible.builtin.pause:
+    prompt: >-
+      Tailscale 인증 키를 붙여넣으세요
+      (관리 콘솔 → Settings → Keys → Generate auth key, Tags: {{ tailscale_tags | join(',') }}, Reusable 끔)
+    echo: false
+  register: tailscale_authkey_prompt
+  when:
+    - not (tailscale_running | default(false))
+    - lookup('ansible.builtin.env', 'TAILSCALE_AUTHKEY') == ''
+
+- name: Tailscale 등록
+  ansible.builtin.command: >-
+    tailscale up
+    --auth-key={{ lookup('ansible.builtin.env', 'TAILSCALE_AUTHKEY') or tailscale_authkey_prompt.user_input }}
+    --hostname={{ tailscale_hostname }}
+    --advertise-tags={{ tailscale_tags | join(',') }}
+  no_log: true  # 인증 키가 로그에 남지 않게
+  changed_when: true
+  when: not (tailscale_running | default(false))
+
+# --- 이미 등록된 기기: 태그가 붙어 있는지 확인 ---
+# 태그가 있어야 key expiry가 꺼진 '서버'로 취급된다. 태그 변경은 관리 콘솔에서 (Machines → Edit ACL tags)
+- name: 서버 태그 확인
+  ansible.builtin.assert:
+    that: tailscale_tags | difference(tailscale_current_tags) | length == 0
+    fail_msg: >-
+      Tailscale 태그 누락: 필요 {{ tailscale_tags }}, 현재 {{ tailscale_current_tags }}.
+      관리 콘솔 Machines → {{ tailscale_hostname }} → Edit ACL tags에서 추가하세요
+  when: tailscale_running | default(false)

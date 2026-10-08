@@ -5,4 +5,5 @@
     - base
     - ssh
     - firewall
+    - tailscale
     - unattended_upgrades

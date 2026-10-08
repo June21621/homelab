@@ -6,6 +6,13 @@ timezone: Asia/Seoul
 lan_nic: enp3s0
 lan_subnet: 192.168.35.0/24
 
+# --- tailscale ---
+tailscale_version: "1.102.4"
+# pkgs.tailscale.com/stable/ubuntu/noble.noarmor.gpg (2026-10-08 확인)
+tailscale_keyring_sha256: 3e03dacf222698c60b8e2f990b809ca1b3e104de127767864284e6c228f1fb39
+tailscale_hostname: kjt-home-server
+tailscale_tags: ["tag:server"]
+
 # --- ssh ---
 admin_user: june
 # 공개키는 커밋해도 안전하다 (개인키는 각 PC에만 있음)

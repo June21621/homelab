@@ -16,7 +16,7 @@ N100 미니 PC를 24시간 돌아가는 **CI/CD · 모니터링 · PR 프리뷰(
 - 디스크: SATA SSD 512GB, LVM 루트 466G (ext4)
 - 네트워크: 유선 `enp3s0` 192.168.35.235 (DHCP, MAC 68:1d:ef:3f:d7:fe, metric 110), `enp1s0` 미사용
   - Wi-Fi `wlp2s0`는 예비 경로(metric 600). 유선 RTL8168h에서 원인 미상 링크 끊김 이력 있음(2026-10-05)
-- Tailscale: 100.124.153.34 (설치됨)
+- Tailscale: 100.124.153.34, 기기 이름 `kjt-home-server`, `tag:server`(key expiry 꺼짐). Ansible `tailscale` 역할로 관리(1.102.4 고정)
 - 절전 차단됨 (sleep/suspend/hibernate target mask)
 
 ## 아키텍처 결정사항
@@ -73,7 +73,8 @@ homelab/
 1. ✅ **호스트 하드닝 (Ansible)** — SSH 키 인증만, 패스워드·root 로그인 차단, ufw, unattended-upgrades, 타임존 Asia/Seoul, WoL 영구 설정
    - 확인: 새 세션으로 SSH 재접속 성공, 패스워드 로그인 거부
    - 결과: 새 세션 접속, 비밀번호·root 로그인 거부, LAN에서 22 외 포트 차단, 재실행 시 changed=0 (2026-10-05)
-2. **Tailscale** — 확인: 외부망(핫스팟)에서 SSH 접속
+2. ✅ **Tailscale** — 확인: 외부망(핫스팟)에서 SSH 접속
+   - 결과: 핫스팟에서 SSH 접속 성공(LAN 주소 ping 불가로 외부망 확인), 설치·등록을 플레이북으로 이관 (2026-10-08)
 3. **S3 버킷 + IAM (수동, runbook 기록)** — `tfstate`, `k3s-backup` 버킷 / 버킷별 최소 권한 IAM / 버전 관리·암호화·퍼블릭 차단·수명 주기
 4. **k3s 설치 (Ansible)** — 위 옵션 포함
    - 확인: etcd 스냅샷이 S3에 올라감, **스냅샷 복원 1회 실제 수행**
