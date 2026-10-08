@@ -3,6 +3,7 @@
 ## 목표
 N100 미니 PC를 24시간 돌아가는 **CI/CD · 모니터링 · PR 프리뷰(dev) 클러스터**로 구성한다.
 무거운 작업은 개인 PC에서 돌리고, 미니 PC는 관리·감시 역할만 맡는다.
+개인 PC의 워크로드 클러스터(k3d, 커넥티드카 데모·트러블슈팅용)에 대한 CI/CD와 모니터링도 미니 PC가 맡는다.
 최종 목표: **OS 설치 + seed 절차 이후 명령 하나로 전체 재구축**, Git이 유일한 변경 경로.
 
 ## 하드웨어 / 현재 상태
@@ -28,9 +29,10 @@ N100 미니 PC를 24시간 돌아가는 **CI/CD · 모니터링 · PR 프리뷰(
 | 외부 리소스 | Terraform — GitHub(repo 설정, 웹훅, branch protection), Cloudflare(Tunnel), Tailscale ACL, ArgoCD 부트스트랩까지만 |
 | Terraform state | AWS S3 backend, `use_lockfile = true` (DynamoDB 없음) |
 | 클러스터 내부 앱 | ArgoCD app-of-apps. 외부 앱은 Helm 차트, 직접 만든 앱은 Kustomize |
-| CI | Jenkins (kubernetes 플러그인으로 빌드마다 agent pod), 이미지는 GHCR |
+| 개인 PC 워크로드 클러스터 | Docker Desktop 위 k3d(k3s). 커넥티드카 텔레메트리(앱 + Kafka·MongoDB·Redis + Traefik, 스토리지 local-path). 관리용 WSL과 분리. 꺼져 있는 시간이 많은 것을 전제로 설계 |
+| CI | Jenkins (kubernetes 플러그인으로 빌드마다 agent pod), 이미지는 GHCR. 개인 PC 클러스터 앱도 Jenkins → GHCR → gitops 태그 갱신 → ArgoCD 배포 (Jenkins는 클러스터 권한 없음) |
 | 웹훅 수신 | Cloudflare Tunnel로 Jenkins 웹훅 경로만 노출 |
-| 모니터링 | kube-prometheus-stack, Loki + Alloy, Alertmanager → 메신저 알림 |
+| 모니터링 | kube-prometheus-stack, Loki + Alloy, Alertmanager → 메신저 알림. 개인 PC 클러스터는 Alloy가 지표·로그를 미니 PC로 전송. 개인 PC가 꺼진 것은 장애로 알리지 않음 (켜져 있는데 서비스가 죽었을 때만 알림) |
 | 감시자 감시 | Alertmanager Watchdog → healthchecks.io (dead man's switch) |
 | 시크릿 | 기본 SOPS + age (Vault + ESO는 미정, 아래 참고) |
 | 원격 접속 | Tailscale (호스트에 직접 설치) |
@@ -41,6 +43,12 @@ N100 미니 PC를 24시간 돌아가는 **CI/CD · 모니터링 · PR 프리뷰(
 "k3s가 통째로 안 뜰 때 이게 있어야 고칠 수 있나?" → 그렇다면 **호스트**, 아니면 **k3s**.
 - 호스트(systemd): Tailscale, WoL 스크립트(개인 PC 깨우기), etcd 스냅샷·restic 백업
 - k3s: 나머지 전부
+
+### 미니 PC vs 개인 PC 배치 원칙
+- 앱이 **실행 중에 의존하는 것**(스토리지, DB, 인그레스)은 앱과 같은 곳(개인 PC)에 둔다.
+  미니 PC나 네트워크가 끊겨도 앱이 멈추지 않게 하기 위함
+- **빌드·배포·관찰 도구**(Jenkins, ArgoCD, 모니터링)는 미니 PC
+- 이미지 레지스트리는 외부(GHCR). Harbor·NFS·SonarQube 같은 부가 서버를 미니 PC에 두지 않는다
 
 ## 리소스 제약 (16GB)
 - **모든 Helm 차트에 requests/limits 지정**, 차트 버전 고정(`latest` 금지)
@@ -76,6 +84,8 @@ homelab/
 9. **Jenkins + 첫 파이프라인** — 샘플 앱(Stream Walkway)으로 push → 빌드 → GHCR → 매니페스트 갱신 → ArgoCD 배포 end-to-end
 10. **PR 프리뷰 오퍼레이터 연동**
 11. **장애 검증** — 전원 차단, 재부팅, 디스크 풀, 클러스터 삭제 후 재구축 (복구 시간 기록)
+12. **개인 PC 워크로드 클러스터 연동** (5·7·9단계 이후) — ArgoCD에 개인 PC k3d를 외부 클러스터로 등록(Tailscale 경유), Alloy 원격 전송, 커넥티드카 파이프라인
+    - 확인: 커넥티드카 push → 빌드 → GHCR → ArgoCD가 개인 PC에 배포 / Grafana에서 개인 PC 클러스터 지표·로그 확인 / 개인 PC를 꺼도 장애 알림이 오지 않음
 
 ## 작업 규칙 (반드시 지킬 것)
 - **SSH·방화벽·네트워크 설정 변경 전**: 변경 내용을 먼저 보여주고 승인받기. 기존 SSH 세션을 유지한 채 새 세션으로 접속 확인 후 다음 진행 (잠김 방지)
@@ -95,3 +105,5 @@ homelab/
 - Cloudflare에서 쓸 도메인
 - 개인 PC의 MAC 주소·IP (WoL 대상)
 - PR 프리뷰 앱을 미니 PC에 띄우는 동시 개수 상한 값
+- 개인 PC k3d API를 미니 PC에 여는 방식 (Windows Tailscale IP + 인증서 tls-san 등)과 ArgoCD에 줄 권한 범위
+- gitops/ 안에서 클러스터별 경로 구분 방식 (미니 PC / 개인 PC) — 5단계에서 결정
