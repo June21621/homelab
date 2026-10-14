@@ -9,6 +9,9 @@ UV_VERSION="0.12.23"
 ANSIBLE_CORE_VERSION="2.21.4"
 ANSIBLE_LINT_VERSION="26.9.0"
 PRE_COMMIT_VERSION="4.6.2"
+AWSCLI_VERSION="2.37.13"
+# 2026-10-14 AWS CLI 팀 PGP 서명(FB5DB77FD5C118B80511ADA8A6310ACC4672475C) 확인 후 고정
+AWSCLI_SHA256="c92fde59827622889d3d38a44e2089a137894ce151a2c658a3988ecde4860caa"
 
 if [[ "${EUID}" -eq 0 ]]; then
   echo "root가 아닌 일반 사용자로 실행하세요 (필요한 단계만 sudo 사용)" >&2
@@ -93,6 +96,17 @@ uv tool install --quiet "ansible-core==${ANSIBLE_CORE_VERSION}"
 uv tool install --quiet "ansible-lint==${ANSIBLE_LINT_VERSION}"
 uv tool install --quiet "pre-commit==${PRE_COMMIT_VERSION}"
 
+# --- AWS CLI v2 (aws sso login용, 사용자 영역 설치라 sudo 불필요) -------------
+log "AWS CLI ${AWSCLI_VERSION}"
+if [[ "$(aws --version 2>/dev/null | sed -E 's#^aws-cli/([0-9.]+).*#\1#')" != "${AWSCLI_VERSION}" ]]; then
+  awstmp="$(mktemp -d)"
+  curl -fsSL -o "${awstmp}/awscli.zip" "https://awscli.amazonaws.com/awscli-exe-linux-x86_64-${AWSCLI_VERSION}.zip"
+  echo "${AWSCLI_SHA256}  ${awstmp}/awscli.zip" | sha256sum -c -
+  unzip -q "${awstmp}/awscli.zip" -d "${awstmp}"
+  "${awstmp}/aws/install" -i "${HOME}/.local/aws-cli" -b "${HOME}/.local/bin" --update
+  rm -rf "${awstmp}"
+fi
+
 # --- 결과 -------------------------------------------------------------------
 log "설치 결과"
 terraform version | head -1
@@ -103,6 +117,7 @@ uv --version
 ansible --version | head -1
 ansible-lint --version | head -1
 pre-commit --version
+aws --version
 
 if ! grep -q '.local/bin' "${HOME}/.bashrc" 2>/dev/null && [[ ":${PATH}:" != *":${HOME}/.local/bin:"* ]]; then
   echo

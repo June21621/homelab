@@ -19,8 +19,22 @@
 - repo 폴더에서 `make hooks`. 커밋은 항상 WSL에서 (Windows git에는 pre-commit 훅이 없음)
 - 미니 PC 구성: `make host-check`로 미리 보기 → `make host`로 적용. SSH 키 passphrase(agent에 1시간)와 미니 PC sudo 비밀번호를 입력
 
-### Git 밖에 보관하는 비밀값 (비밀번호 관리자)
-- (해당 단계에서 추가: age 개인키, AWS 키, Tailscale auth key, ...)
+### AWS
+- 평소 로그인: Identity Center 액세스 포털(URL은 Bitwarden) → `june1`. root는 결제·계정 복구에만
+- 관리 PC 처음 한 번: `aws configure sso`
+  - SSO session name `homelab`, start URL은 포털 URL(끝 `/` 없이), SSO region `ap-northeast-2`, scopes 기본값
+  - 역할 `homelab-tfstate`, client region `ap-northeast-2`, output `json`, profile name `homelab-tfstate`
+  - 브라우저 승인이 안 되면 `aws configure sso --use-device-code`
+- 평소: `aws sso login --profile homelab-tfstate`
+- 버킷·백업용 IAM 사용자를 다시 만들 때: AWS 콘솔(서울) CloudShell에 `scripts/aws-bootstrap.sh` 업로드 → `sha256sum`으로 파일 확인 → `bash aws-bootstrap.sh check` → `apply`
+  - 액세스 키 생성과 Identity Center 권한 세트 `homelab-tfstate`(인라인 정책은 apply 출력)는 콘솔에서 직접
+
+### Git 밖에 보관하는 비밀값 (Bitwarden, 값은 여기 적지 않음)
+- AWS root 이메일·비밀번호 (MFA는 휴대폰 Google Authenticator — Bitwarden에 넣지 않음)
+- AWS 액세스 포털 URL, `june1` 비밀번호
+- `homelab-k3s-backup` 액세스 키 ID·비밀 액세스 키
+- Bitwarden 복구 코드 (종이, Bitwarden 밖)
+- age 개인키 (4단계에서 추가)
 
 ## 2. 수동 작업 기록
 
@@ -45,8 +59,18 @@
 - Tailscale 관리 콘솔: 미니 PC에 `tag:server` 부착 (Machines → Edit ACL tags)
 - 외부망 확인: 개인 PC를 핫스팟에 연결, LAN 주소 ping 불가 확인 후 Tailscale로 SSH 접속 성공
 
+### 2026-10-13 ~ 10-14 (3단계)
+- AWS root: MFA 등록(Google Authenticator), root 액세스 키 없음 확인
+- AWS Budgets: 월 $10 비용 예산(템플릿 기본 알림: 실제 85%·100%, 예상 100%)
+- 계정 설정: 결제 정보에 대한 IAM 사용자·역할 액세스 활성화 (root로)
+- IAM Identity Center: 서울 리전, 조직 인스턴스(AWS Organizations 활성화), 단일 리전, 로그인마다 MFA 요구
+  - 사용자 `june1`, 권한 세트 `AdministratorAccess`(1시간)·`homelab-tfstate`(인라인 정책, 1시간) 할당
+- CloudShell에서 `scripts/aws-bootstrap.sh apply`: 버킷 `june21621-homelab-tfstate`(이전 버전 90일)·`june21621-homelab-k3s-backup`(30일), IAM 사용자 `homelab-k3s-backup`(인라인 정책 `june21621-homelab-k3s-backup-rw`)
+- `homelab-k3s-backup` 액세스 키 생성(설명 `mini-pc-etcd-restic`) → Bitwarden 저장, csv 다운로드 안 함
+- 권한 확인(SSO 프로필 `homelab-tfstate`): tfstate 업로드·목록·삭제 성공 / backup 버킷 목록·전체 버킷 목록·버전 관리 변경 AccessDenied
+
 ### 날짜 미상 (이 기록 이전)
-- Tailscale 설치 (100.124.153.34) → 2단계에서 플레이북으로 옮길 예정
+- Tailscale 설치 (100.124.153.34) → 2단계 플레이북으로 이관 완료
 
 ## 3. 남은 수동 작업
 - [ ] 공유기 DHCP 예약: `68:1d:ef:3f:d7:fe` → `192.168.35.235`
@@ -54,3 +78,6 @@
 - [ ] Terraform 도입 후 Tailscale ACL(tagOwners 포함)을 Terraform으로 이관
 - [ ] 6단계: Wi-Fi 예비 경로 설정(비밀번호 포함)을 SOPS + Ansible로 옮기기
 - [ ] 7단계: 유선 링크 끊김 알림
+- [ ] Google Authenticator 클라우드 백업 확인, 또는 AWS root에 두 번째 MFA 등록
+- [ ] 4단계: `homelab-k3s-backup` 키를 실제 업로드(etcd 스냅샷)로 검증
+- [ ] AWS 액세스 키 교체 주기 정하기 (예: 1년)

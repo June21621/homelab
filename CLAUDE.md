@@ -37,6 +37,7 @@ N100 미니 PC를 24시간 돌아가는 **CI/CD · 모니터링 · PR 프리뷰(
 | 시크릿 | 기본 SOPS + age (Vault + ESO는 미정, 아래 참고) |
 | 원격 접속 | Tailscale (호스트에 직접 설치) |
 | 백업 | k3s etcd 스냅샷 + restic → S3 (버킷·IAM 사용자 용도별 분리) |
+| AWS 접근 | 사람: IAM Identity Center(서울, 조직 인스턴스) + 로그인마다 MFA, 평소 root 사용 안 함. 관리 PC: SSO 프로필 `homelab-tfstate`(tfstate 버킷 객체만, 세션 1시간, 장기 키 없음). 미니 PC: IAM 사용자 `homelab-k3s-backup`(백업 버킷만, 장기 키, 원본은 Bitwarden). 버킷 `june21621-homelab-tfstate`·`june21621-homelab-k3s-backup`, 생성·설정은 `scripts/aws-bootstrap.sh`(CloudShell) |
 | PR 프리뷰 | 별도 repo `pr-preview-operator`(Python, kopf). 이 repo에서는 차트만 참조 |
 
 ### 호스트 vs k3s 배치 원칙
@@ -75,9 +76,11 @@ homelab/
    - 결과: 새 세션 접속, 비밀번호·root 로그인 거부, LAN에서 22 외 포트 차단, 재실행 시 changed=0 (2026-10-05)
 2. ✅ **Tailscale** — 확인: 외부망(핫스팟)에서 SSH 접속
    - 결과: 핫스팟에서 SSH 접속 성공(LAN 주소 ping 불가로 외부망 확인), 설치·등록을 플레이북으로 이관 (2026-10-08)
-3. **S3 버킷 + IAM (수동, runbook 기록)** — `tfstate`, `k3s-backup` 버킷 / 버킷별 최소 권한 IAM / 버전 관리·암호화·퍼블릭 차단·수명 주기
+3. ✅ **S3 버킷 + IAM (수동, runbook 기록)** — `tfstate`, `k3s-backup` 버킷 / 버킷별 최소 권한 IAM / 버전 관리·암호화·퍼블릭 차단·수명 주기
+   - 결과: 버킷 2개(서울, 버전 관리·SSE-S3·퍼블릭 차단·HTTPS 강제·수명 주기 90/30일) + 백업용 IAM 사용자. 관리 PC의 SSO 프로필로 tfstate만 접근되고 다른 버킷과 버킷 설정 변경은 거부됨을 확인 (2026-10-14)
 4. **k3s 설치 (Ansible)** — 위 옵션 포함
    - 확인: etcd 스냅샷이 S3에 올라감, **스냅샷 복원 1회 실제 수행**
+   - 메모: 백업 키 전달을 위해 SOPS(age)를 Ansible용으로 먼저 도입 (클러스터용은 6단계)
 5. **ArgoCD 부트스트랩 + app-of-apps** — 이후 `kubectl apply`/`helm install` 직접 사용 금지
 6. **시크릿 (SOPS)**
 7. **모니터링** — 확인: 테스트 알림 수신, Watchdog 핑 수신
@@ -108,3 +111,4 @@ homelab/
 - PR 프리뷰 앱을 미니 PC에 띄우는 동시 개수 상한 값
 - 개인 PC k3d API를 미니 PC에 여는 방식 (Windows Tailscale IP + 인증서 tls-san 등)과 ArgoCD에 줄 권한 범위
 - gitops/ 안에서 클러스터별 경로 구분 방식 (미니 PC / 개인 PC) — 5단계에서 결정
+- Jenkins gitops 쓰기 토큰의 범위 (gitops repo 분리 여부) — 같은 repo면 그 토큰으로 ansible/·terraform/ 코드도 바꿀 수 있음. 9단계 전 결정
