@@ -1,0 +1,5 @@
+# SOPS 암호화 규칙. 공개키만 있으므로 커밋해도 안전하다.
+# 개인키: 관리 PC WSL ~/.config/sops/age/keys.txt (백업: Bitwarden "homelab-sops-age")
+creation_rules:
+  - path_regex: \.sops\.ya?ml$
+    age: age1jwewnvytn2n60rqlskelmz9k35zj2f86w6t8lch9cx5zcwppfe2s5jw5cq

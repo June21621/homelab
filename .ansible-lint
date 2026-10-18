@@ -1,0 +1,6 @@
+# ansible-lint 설정 (pre-commit·make lint에서 사용)
+exclude_paths:
+  # SOPS 암호문: 줄 길이 등 형식 검사는 의미가 없고, 손으로 고치지 않는다
+  - ansible/**/*.sops.yaml
+  # 설치된 컬렉션 (repo 코드 아님)
+  - ansible/.ansible/
