@@ -2,4 +2,4 @@
 # 개인키: 관리 PC WSL ~/.config/sops/age/keys.txt (백업: Bitwarden "homelab-sops-age")
 creation_rules:
   - path_regex: \.sops\.ya?ml$
-    age: age1jwewnvytn2n60rqlskelmz9k35zj2f86w6t8lch9cx5zcwppfe2s5jw5cq
+    age: age1p3jvjl72r73cy6m4c65as522awqzq0l3epv6un8t368rnf6raslstsnyqd
