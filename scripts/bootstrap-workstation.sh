@@ -122,14 +122,16 @@ fi
 
 # --- 결과 -------------------------------------------------------------------
 log "설치 결과"
-terraform version | head -1
-sops --version | head -1
-kubectl version --client | head -1
+# head -1은 첫 줄만 읽고 먼저 끝나 앞 명령이 SIGPIPE(141)로 죽을 수 있다(pipefail이면 스크립트 실패).
+# sed -n 1p는 입력을 끝까지 읽으므로 안전하다
+terraform version | sed -n 1p
+sops --version | sed -n 1p
+kubectl version --client | sed -n 1p
 age --version
 shellcheck --version | sed -n 2p
 uv --version
-ansible --version | head -1
-ansible-lint --version | head -1
+ansible --version | sed -n 1p
+ansible-lint --version | sed -n 1p
 pre-commit --version
 aws --version
 
