@@ -1,0 +1,12 @@
+# {{ ansible_managed }}
+apiVersion: helm.cattle.io/v1
+kind: HelmChartConfig
+metadata:
+  name: traefik
+  namespace: kube-system
+spec:
+  # traefik 차트 40.x부터 서비스 종류는 service.spec.type (service.type은 무시됨, 2026-10-18 확인)
+  valuesContent: |-
+    service:
+      spec:
+        type: ClusterIP

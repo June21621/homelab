@@ -1,0 +1,70 @@
+# k3s 단일 노드 (embedded etcd). 설치 스크립트(curl | sh) 대신 바이너리를 체크섬 검증해 받고 유닛·설정을 직접 둔다.
+- name: K3s 바이너리 (버전·체크섬 고정)
+  ansible.builtin.get_url:
+    url: "https://github.com/k3s-io/k3s/releases/download/{{ k3s_version | urlencode }}/k3s"
+    dest: /usr/local/bin/k3s
+    checksum: "sha256:{{ k3s_sha256 }}"
+    mode: "0755"
+  notify: K3s 재시작
+
+# 설치 스크립트와 같은 편의 링크 (호스트에서 sudo kubectl로 바로 조회)
+# force: --check에서는 바이너리를 실제로 받지 않아 대상이 없으므로, 대상이 없어도 링크를 만들 수 있게 한다
+- name: 편의 링크 (kubectl·crictl·ctr)
+  ansible.builtin.file:
+    src: /usr/local/bin/k3s
+    dest: "/usr/local/bin/{{ item }}"
+    state: link
+    force: true
+  loop: [kubectl, crictl, ctr]
+
+- name: 설정 디렉터리
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0700"
+  loop:
+    - /etc/rancher/k3s
+    - /var/lib/rancher/k3s/server/manifests
+
+# 토큰·S3 키가 들어 있어 로그와 --diff에 내용을 남기지 않는다
+- name: K3s 설정 (config.yaml)
+  ansible.builtin.template:
+    src: config.yaml.j2
+    dest: /etc/rancher/k3s/config.yaml
+    mode: "0600"
+  no_log: true
+  diff: false
+  notify: K3s 재시작
+
+# Traefik은 호스트 포트를 잡지 않게 ClusterIP로 (외부 노출은 Cloudflare Tunnel이 클러스터 안에서 연결)
+- name: 내장 Traefik 설정 덮어쓰기
+  ansible.builtin.template:
+    src: traefik-config.yaml.j2
+    dest: /var/lib/rancher/k3s/server/manifests/traefik-config.yaml
+    mode: "0600"
+
+- name: K3s systemd 유닛
+  ansible.builtin.template:
+    src: k3s.service.j2
+    dest: /etc/systemd/system/k3s.service
+    mode: "0644"
+  notify: K3s 재시작
+
+# --check에서는 유닛 파일이 아직 없어 실패하므로 건너뛴다 (아래 대기도 같음)
+- name: K3s 켜기
+  ansible.builtin.systemd_service:
+    name: k3s.service
+    enabled: true
+    state: started
+    daemon_reload: true
+  when: not ansible_check_mode
+
+# 재시작 핸들러가 이 역할 안에서 끝나게 해 뒤 단계(kubeconfig 등)가 살아 있는 API를 보게 한다
+- name: 대기 중인 재시작 실행
+  ansible.builtin.meta: flush_handlers
+
+- name: API 응답 대기
+  ansible.builtin.wait_for:
+    port: 6443
+    timeout: 300
+  when: not ansible_check_mode
