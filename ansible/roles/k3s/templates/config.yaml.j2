@@ -1,0 +1,24 @@
+# {{ ansible_managed }}
+# 토큰은 SOPS에 고정: 새 호스트에서 S3 스냅샷을 복원할 때 같은 토큰이 필요하다
+token: "{{ k3s_token }}"
+cluster-init: true
+secrets-encryption: true
+write-kubeconfig-mode: "0600"
+tls-san:
+{% for san in k3s_tls_san %}
+  - "{{ san }}"
+{% endfor %}
+cluster-cidr: "{{ k3s_pod_cidr }}"
+service-cidr: "{{ k3s_service_cidr }}"
+disable:
+  - servicelb
+
+etcd-snapshot-schedule-cron: "{{ k3s_snapshot_cron }}"
+etcd-snapshot-retention: {{ k3s_snapshot_retention }}
+etcd-s3: true
+etcd-s3-region: "{{ k3s_etcd_s3_region }}"
+etcd-s3-bucket: "{{ k3s_etcd_s3_bucket }}"
+etcd-s3-folder: "{{ k3s_etcd_s3_folder }}"
+etcd-s3-retention: {{ k3s_etcd_s3_retention }}
+etcd-s3-access-key: "{{ k3s_etcd_s3_access_key }}"
+etcd-s3-secret-key: "{{ k3s_etcd_s3_secret_key }}"

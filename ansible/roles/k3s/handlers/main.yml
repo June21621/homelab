@@ -1,0 +1,7 @@
+# KillMode=process라 k3s만 재시작되고 실행 중인 파드는 유지된다
+- name: K3s 재시작
+  ansible.builtin.systemd_service:
+    name: k3s.service
+    state: restarted
+    daemon_reload: true
+  when: not ansible_check_mode  # --check에서는 유닛이 아직 없을 수 있음

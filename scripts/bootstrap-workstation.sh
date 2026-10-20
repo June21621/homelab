@@ -12,6 +12,9 @@ PRE_COMMIT_VERSION="4.6.2"
 AWSCLI_VERSION="2.37.13"
 # 2026-10-14 AWS CLI 팀 PGP 서명(FB5DB77FD5C118B80511ADA8A6310ACC4672475C) 확인 후 고정
 AWSCLI_SHA256="c92fde59827622889d3d38a44e2089a137894ce151a2c658a3988ecde4860caa"
+# k3s(v1.36.5+k3s1)와 같은 마이너. dl.k8s.io의 .sha256 값(2026-10-18 확인)을 고정
+KUBECTL_VERSION="1.36.5"
+KUBECTL_SHA256="33bc88a24c3b09cf55bfd59e6ca977881b61fc3f25ab65bc80c65b430248648e"
 
 if [[ "${EUID}" -eq 0 ]]; then
   echo "root가 아닌 일반 사용자로 실행하세요 (필요한 단계만 sudo 사용)" >&2
@@ -83,6 +86,16 @@ if [[ "$(sops --version 2>/dev/null | grep -o '[0-9][0-9.]*' | head -1)" != "${S
   sudo install -m 0755 "${tmp}/${bin}" /usr/local/bin/sops
 fi
 
+# --- kubectl (dl.k8s.io 바이너리, 체크섬 고정) -------------------------------
+log "kubectl ${KUBECTL_VERSION}"
+if [[ "$(kubectl version --client -o json 2>/dev/null | grep -o '"gitVersion": *"v[^"]*"' | grep -o '[0-9][0-9.]*')" != "${KUBECTL_VERSION}" ]]; then
+  kubetmp="$(mktemp -d)"
+  curl -fsSL -o "${kubetmp}/kubectl" "https://dl.k8s.io/release/v${KUBECTL_VERSION}/bin/linux/amd64/kubectl"
+  echo "${KUBECTL_SHA256}  ${kubetmp}/kubectl" | sha256sum -c -
+  sudo install -m 0755 "${kubetmp}/kubectl" /usr/local/bin/kubectl
+  rm -rf "${kubetmp}"
+fi
+
 # --- uv (Python 도구 관리) --------------------------------------------------
 log "uv ${UV_VERSION}"
 export PATH="${HOME}/.local/bin:${PATH}"
@@ -109,13 +122,16 @@ fi
 
 # --- 결과 -------------------------------------------------------------------
 log "설치 결과"
-terraform version | head -1
-sops --version | head -1
+# head -1은 첫 줄만 읽고 먼저 끝나 앞 명령이 SIGPIPE(141)로 죽을 수 있다(pipefail이면 스크립트 실패).
+# sed -n 1p는 입력을 끝까지 읽으므로 안전하다
+terraform version | sed -n 1p
+sops --version | sed -n 1p
+kubectl version --client | sed -n 1p
 age --version
 shellcheck --version | sed -n 2p
 uv --version
-ansible --version | head -1
-ansible-lint --version | head -1
+ansible --version | sed -n 1p
+ansible-lint --version | sed -n 1p
 pre-commit --version
 aws --version
 

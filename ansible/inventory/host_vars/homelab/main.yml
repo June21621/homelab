@@ -1,0 +1,38 @@
+# --- base ---
+hostname: homelab
+timezone: Asia/Seoul
+
+# --- network ---
+lan_nic: enp3s0
+lan_subnet: 192.168.35.0/24
+
+# --- tailscale ---
+tailscale_version: "1.102.4"
+# pkgs.tailscale.com/stable/ubuntu/noble.noarmor.gpg (2026-10-08 확인)
+tailscale_keyring_sha256: 3e03dacf222698c60b8e2f990b809ca1b3e104de127767864284e6c228f1fb39
+tailscale_hostname: kjt-home-server
+tailscale_tags: ["tag:server"]
+
+# --- ssh ---
+admin_user: june
+# 공개키는 커밋해도 안전하다 (개인키는 각 PC에만 있음)
+admin_authorized_keys:
+  - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILyh7Slh8RQHDUyiUNKi6fCi9/JEtfP8LR4Z9rTixZ8u homeserver"
+  - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIL0kKT0Uu9nxZnEMlv50vDQuVthSF4WqrxigDbyT10b/ homelab-admin@wsl"
+
+# --- k3s ---
+# stable 채널(2026-10-18 확인). 체크섬은 릴리스의 sha256sum-amd64.txt에서 k3s 줄
+k3s_version: "v1.36.5+k3s1"
+k3s_sha256: d73847bcd3c5fccef0115b372e2f9a91f3032dc84bbf71518a4617565294d313
+# API 인증서에 넣을 이름: Tailscale IP·MagicDNS 이름·호스트명 (공개 노출 없음)
+k3s_tls_san: ["100.124.153.34", "kjt-home-server", "homelab"]
+k3s_pod_cidr: 10.42.0.0/16
+k3s_service_cidr: 10.43.0.0/16
+# etcd 스냅샷: 6시간마다, 로컬 20개, S3 28개(7일치). 버킷 수명 주기(30일)가 추가 안전망
+k3s_snapshot_cron: "0 */6 * * *"
+k3s_snapshot_retention: 20
+k3s_etcd_s3_bucket: june21621-homelab-k3s-backup
+k3s_etcd_s3_region: ap-northeast-2
+k3s_etcd_s3_folder: etcd
+k3s_etcd_s3_retention: 28
+# k3s_token, k3s_etcd_s3_access_key, k3s_etcd_s3_secret_key → secrets.sops.yaml

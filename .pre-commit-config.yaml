@@ -41,7 +41,8 @@ repos:
         pass_filenames: false
         files: ^ansible/
       - id: sops-encrypted
-        name: secrets/ 아래 파일은 SOPS 암호화 필수
+        name: secrets/ 아래·*.sops.yaml 파일은 SOPS 암호화 필수
         entry: scripts/check-sops-encrypted.sh
         language: script
-        files: (^|/)secrets/
+        files: (^|/)secrets/|\.sops\.ya?ml$
+        exclude: ^\.sops\.yaml$  # SOPS 설정 파일(공개키만 있음)

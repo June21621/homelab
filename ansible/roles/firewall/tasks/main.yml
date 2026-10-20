@@ -24,6 +24,26 @@
     proto: udp
     comment: tailscale
 
+# --- k3s: API는 Tailscale에서만, 파드·서비스 대역은 호스트 접근 허용 (CoreDNS·metrics-server가 API·kubelet에 붙음) ---
+# LAN에는 k3s 포트를 열지 않는다. Traefik도 ClusterIP라 호스트 포트를 잡지 않음
+- name: K3s API 허용 (Tailscale)
+  community.general.ufw:
+    rule: allow
+    port: "6443"
+    proto: tcp
+    interface: tailscale0
+    direction: in
+    comment: k3s-api-tailscale
+
+- name: K3s 파드·서비스 대역 허용
+  community.general.ufw:
+    rule: allow
+    from_ip: "{{ item.cidr }}"
+    comment: "{{ item.comment }}"
+  loop:
+    - { cidr: "{{ k3s_pod_cidr }}", comment: k3s-pods }
+    - { cidr: "{{ k3s_service_cidr }}", comment: k3s-services }
+
 - name: 나가는 연결 허용
   community.general.ufw:
     default: allow
