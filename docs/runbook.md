@@ -11,13 +11,22 @@
   첫 `make host`는 `ansible/inventory/hosts.yml`의 `ansible_host`를 LAN IP(192.168.35.235)로 바꿔 실행 →
   실행 중 키 입력(또는 `TAILSCALE_AUTHKEY` 환경변수) → 끝나면 새 Tailscale IP로 inventory 갱신
 - Tailscale 버전을 올릴 때도 LAN IP로 실행 (tailscaled 재시작으로 Tailscale 경유 연결이 끊김)
+- k3s는 `make host`가 함께 설치한다(토큰·백업 키는 SOPS 파일에서). 이어서 관리 PC에서 `make kubeconfig` → `make verify-k3s`
+- 클러스터 상태를 S3 백업으로 되돌릴 때: 미니 PC에서 `sudo k3s etcd-snapshot ls`로 이름 확인(또는 관리 PC에서
+  `kubectl get etcdsnapshotfiles`) → 관리 PC에서 `make etcd-restore SNAPSHOT=<이름>` → `yes` → **`make verify-k3s`로 확인**
+  (플레이북 성공만 믿지 말 것. 복원된 etcd의 노드 상태가 이미 Ready라 kubelet 보고 전에도 통과할 수 있음)
+  - etcd 스냅샷에는 볼륨 데이터(DB 파일)가 없다. 스냅샷 이후의 배포 변경은 ArgoCD(5단계 이후)가 Git 기준으로 되돌린다
 
 ### 관리 PC (Windows + WSL2)
 - PowerShell: `wsl --update` → `wsl --install -d Ubuntu-24.04` → `wsl --set-default Ubuntu-24.04`
 - Ubuntu: `bash scripts/bootstrap-workstation.sh` → PowerShell: `wsl --shutdown`
 - `ssh-keygen -t ed25519` (passphrase 설정), `git config --global user.name/user.email` (GitHub 계정 이메일)
 - repo 폴더에서 `make hooks`. 커밋은 항상 WSL에서 (Windows git에는 pre-commit 훅이 없음)
+- age 키 복구: Bitwarden `homelab-sops-age` 메모의 키 파일 세 줄을 `~/.config/sops/age/keys.txt`에 저장 → `chmod 600`
+  (화면에 출력하지 말 것. 백업할 때도 `clip.exe < ~/.config/sops/age/keys.txt`로 클립보드에 바로 복사)
 - 미니 PC 구성: `make host-check`로 미리 보기 → `make host`로 적용. SSH 키 passphrase(agent에 1시간)와 미니 PC sudo 비밀번호를 입력
+- 호스트 시크릿을 처음 만들 때만: `bash scripts/init-host-secrets.sh` (Bitwarden의 `homelab-k3s-backup` 키 입력, k3s 토큰은 자동 생성).
+  이미 있으면 아무것도 하지 않음. 값 수정은 `sops ansible/inventory/host_vars/homelab/secrets.sops.yaml`
 
 ### AWS
 - 평소 로그인: Identity Center 액세스 포털(URL은 Bitwarden) → `june1`. root는 결제·계정 복구에만
@@ -34,7 +43,8 @@
 - AWS 액세스 포털 URL, `june1` 비밀번호
 - `homelab-k3s-backup` 액세스 키 ID·비밀 액세스 키
 - Bitwarden 복구 코드 (종이, Bitwarden 밖)
-- age 개인키 (4단계에서 추가)
+- `homelab-sops-age`: age 개인키 (보안 메모, 2026-10-18 교체본). 이 키로 repo의 `*.sops.yaml`을 연다
+  - k3s 토큰은 Bitwarden이 아니라 SOPS 파일(`host_vars/homelab/secrets.sops.yaml`)에만 있다
 
 ## 2. 수동 작업 기록
 
@@ -72,12 +82,27 @@
 ### 날짜 미상 (이 기록 이전)
 - Tailscale 설치 (100.124.153.34) → 2단계 플레이북으로 이관 완료
 
+### 2026-10-18 ~ 10-20 (4단계: k3s)
+- 사전 조회: k3s·Jenkins·Docker 흔적 없음. 관리 PC(Wi-Fi 192.168.35.187)에서 미니 PC LAN 주소로 통신 불가 —
+  미니 PC 방화벽 로그에도 흔적 없음 → 공유기 무선 격리 추정. 관리는 Tailscale로
+- age 키 생성 → Bitwarden `homelab-sops-age`. 같은 날 키 파일 출력이 작업 중 대화 기록에 노출되어 **교체**:
+  새 키 생성 → `.sops.yaml` 공개키 교체 → `sops rotate --add-age <새> --rm-age <옛>`(데이터 키까지 새로) → keys.txt 교체 → Bitwarden 갱신.
+  시크릿 파일은 커밋 전이었고 시크릿 값 자체는 바꾸지 않음
+- Tailscale ACL(관리 콘솔 시각 편집기): ① `autogroup:member` → `tag:server`: `tcp:22`, `tcp:6443`, `icmp:*`
+  ② `autogroup:member` → `autogroup:self`: 전부 ③ 기본 "All users and devices → 전부" 삭제(마지막에).
+  이유: iptables `ts-input`이 ufw보다 먼저 tailscale0 트래픽을 전부 ACCEPT해서 ufw 규칙이 효과가 없었음(ADR 0004).
+  결과: Tailscale 경유 10250·NodePort 차단, 22·6443·ping 허용, SSH 유지
+- `kubectl delete pod default/dnstest`(확인 스크립트가 남긴 테스트 파드), `kubectl delete configmap default/drill-marker`(리허설 데이터) — 사용자 승인 후
+- etcd 복원 리허설 2회: `docs/verification/2026-10-20-etcd-restore.md`
+
 ## 3. 남은 수동 작업
 - [ ] 공유기 DHCP 예약: `68:1d:ef:3f:d7:fe` → `192.168.35.235`
 - [x] Tailscale 관리 콘솔에서 이 기기의 key expiry 끄기 (2026-10-08)
-- [ ] Terraform 도입 후 Tailscale ACL(tagOwners 포함)을 Terraform으로 이관
-- [ ] 6단계: Wi-Fi 예비 경로 설정(비밀번호 포함)을 SOPS + Ansible로 옮기기
-- [ ] 7단계: 유선 링크 끊김 알림
+- [ ] 7단계: Tailscale ACL(tagOwners, grants 2개)을 Terraform으로 이관하고 `tests`(22·6443 허용, 10250·80·443 차단) 추가
+- [ ] Wi-Fi 예비 경로 설정(비밀번호 포함)을 SOPS + Ansible로 옮기기 (SOPS 준비됨, 지금 가능)
+- [ ] 6단계: 유선 링크 끊김 알림
+- [ ] 유선 LAN 기기에서 `make verify-k3s`로 LAN 쪽 포트(6443·80·443·10250·2379·2380) 차단 확인 (관리 PC는 무선 격리로 건너뜀)
+- [ ] 서비스에 DB가 생기면 볼륨 데이터 백업(restic 등) 검토 — etcd 스냅샷에는 볼륨이 없음
 - [ ] Google Authenticator 클라우드 백업 확인, 또는 AWS root에 두 번째 MFA 등록
-- [ ] 4단계: `homelab-k3s-backup` 키를 실제 업로드(etcd 스냅샷)로 검증
+- [x] 4단계: `homelab-k3s-backup` 키를 실제 업로드(etcd 스냅샷)로 검증 (2026-10-18 정기 스냅샷부터 S3 업로드, 2026-10-20 S3 사본으로 복원)
 - [ ] AWS 액세스 키 교체 주기 정하기 (예: 1년)

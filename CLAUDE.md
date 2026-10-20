@@ -1,10 +1,11 @@
 # homelab — 미니 PC k3s 홈랩
 
 ## 목표
-N100 미니 PC를 24시간 돌아가는 **CI/CD · 모니터링 · PR 프리뷰(dev) 클러스터**로 구성한다.
-무거운 작업은 개인 PC에서 돌리고, 미니 PC는 관리·감시 역할만 맡는다.
-개인 PC의 워크로드 클러스터(k3d, 커넥티드카 데모·트러블슈팅용)에 대한 CI/CD와 모니터링도 미니 PC가 맡는다.
+N100 미니 PC를 24시간 돌아가는 **서비스 배포용 GitOps k3s 클러스터**로 구성한다.
+서비스·ArgoCD·PR 프리뷰 오퍼레이터·경량 모니터링이 한 노드에서 돌고, 노드 자체는 외부(CloudWatch)에서 감시한다.
+설계 상세: `docs/superpowers/specs/2026-10-18-direction-change-design.md`, 결정 이유: `docs/adr/`.
 최종 목표: **OS 설치 + seed 절차 이후 명령 하나로 전체 재구축**, Git이 유일한 변경 경로.
+취업 포트폴리오용이며, 설계 의도(ADR)와 장애 검증 기록(`docs/verification/`)이 결과물만큼 중요하다.
 
 ## 하드웨어 / 현재 상태
 - Firebat T8, Intel N100 4코어, RAM 16GB (단일 노드)
@@ -16,56 +17,59 @@ N100 미니 PC를 24시간 돌아가는 **CI/CD · 모니터링 · PR 프리뷰(
 - 디스크: SATA SSD 512GB, LVM 루트 466G (ext4)
 - 네트워크: 유선 `enp3s0` 192.168.35.235 (DHCP, MAC 68:1d:ef:3f:d7:fe, metric 110), `enp1s0` 미사용
   - Wi-Fi `wlp2s0`는 예비 경로(metric 600). 유선 RTL8168h에서 원인 미상 링크 끊김 이력 있음(2026-10-05)
+  - 관리 PC(Wi-Fi)에서 미니 PC LAN 주소로는 통신 불가(공유기 무선 격리 추정). 관리는 Tailscale로
 - Tailscale: 100.124.153.34, 기기 이름 `kjt-home-server`, `tag:server`(key expiry 꺼짐). Ansible `tailscale` 역할로 관리(1.102.4 고정)
+  - ACL(2026-10-18): member→tag:server는 tcp:22·6443·icmp만, member→self 전부. 기본 전부 허용 규칙 삭제
+- k3s v1.36.5+k3s1 단일 노드 (2026-10-18 설치). kubeconfig는 관리 PC `~/.kube/homelab.yaml`
 - 절전 차단됨 (sleep/suspend/hibernate target mask)
 
 ## 아키텍처 결정사항
 | 영역 | 결정 |
 |---|---|
 | 코드 저장소 | GitHub (셀프호스팅 Git 없음). private로 시작, public 전환 전 전체 히스토리 gitleaks 스캔 |
-| 관리 PC | 개인 PC의 WSL2 Ubuntu 24.04. Ansible·Terraform·sops 실행과 관리자 키 보관은 여기서. 미니 PC에는 관리자 키·repo clone을 두지 않음. 도구는 `scripts/bootstrap-workstation.sh`로 버전 고정 설치 |
-| 호스트 설정 · k3s 설치 | Ansible |
-| k3s | 단일 노드, `--cluster-init`(embedded etcd), etcd 스냅샷 S3 업로드, `--secrets-encryption`, 내장 Traefik 유지 |
-| 외부 리소스 | Terraform — GitHub(repo 설정, 웹훅, branch protection), Cloudflare(Tunnel), Tailscale ACL, ArgoCD 부트스트랩까지만 |
+| 관리 PC | 개인 PC의 WSL2 Ubuntu 24.04. Ansible·Terraform·sops 실행과 관리자 키 보관은 여기서. 미니 PC에는 관리자 키·age 키·repo clone을 두지 않음. 도구는 `scripts/bootstrap-workstation.sh`로 버전 고정 설치 |
+| 호스트 설정 · k3s 설치 | Ansible (`make host`) |
+| k3s | 단일 노드, `--cluster-init`(embedded etcd), `--secrets-encryption`, etcd 스냅샷 6시간마다 S3 업로드, servicelb 끔, 내장 Traefik은 ClusterIP(호스트 포트 없음) |
+| 외부 리소스 | Terraform — AWS(SNS·CloudWatch 알람·Budgets·IAM·SSM 활성화), GitHub(branch protection·ruleset), Cloudflare(Tunnel·DNS), Tailscale ACL, ArgoCD 부트스트랩까지만 |
 | Terraform state | AWS S3 backend, `use_lockfile = true` (DynamoDB 없음) |
-| 클러스터 내부 앱 | ArgoCD app-of-apps. 외부 앱은 Helm 차트, 직접 만든 앱은 Kustomize |
-| 개인 PC 워크로드 클러스터 | Docker Desktop 위 k3d(k3s). 커넥티드카 텔레메트리(앱 + Kafka·MongoDB·Redis + Traefik, 스토리지 local-path). 관리용 WSL과 분리. 꺼져 있는 시간이 많은 것을 전제로 설계 |
-| CI | Jenkins (kubernetes 플러그인으로 빌드마다 agent pod), 이미지는 GHCR. 개인 PC 클러스터 앱도 Jenkins → GHCR → gitops 태그 갱신 → ArgoCD 배포 (Jenkins는 클러스터 권한 없음) |
-| 웹훅 수신 | Cloudflare Tunnel로 Jenkins 웹훅 경로만 노출 |
-| 모니터링 | kube-prometheus-stack, Loki + Alloy, Alertmanager → 메신저 알림. 개인 PC 클러스터는 Alloy가 지표·로그를 미니 PC로 전송. 개인 PC가 꺼진 것은 장애로 알리지 않음 (켜져 있는데 서비스가 죽었을 때만 알림) |
+| 클러스터 내부 앱 | ArgoCD app-of-apps(dex·notifications 등 안 쓰는 컴포넌트 끔). 외부 앱은 Helm 차트, 직접 만든 앱은 Kustomize. gitops는 이 repo의 `gitops/` |
+| 서비스 | 고정하지 않음(커넥티드카 등 필요할 때). 추가 = `gitops/apps/<이름>/` + 앱 repo에서 재사용 워크플로 호출 |
+| CI | GitHub Actions 호스티드 러너 → GHCR. 앱 repo의 Actions는 homelab에 이미지 태그 **PR만** 열고, 태그 줄만 바뀐 PR은 경로 검사 통과 시 자동 병합. 쓰기 자격 증명은 GitHub App(단기 토큰) |
+| CD | 클러스터 안 ArgoCD가 pull. 롤백은 git revert |
+| 외부 노출 | Cloudflare Tunnel(아웃바운드만). 인바운드 포트 없음, k3s API 공개 노출 없음 |
+| 내부 관측 | 경량 kube-prometheus-stack(보존 7일), Alertmanager → Discord. 로그 스택(Loki) 없음 |
+| 외부 관측 | 호스트에 CloudWatch Agent + SSM 하이브리드 활성화. 노드 지표 10개 이하, 하트비트 알람(TreatMissingData=breaching) → SNS 이메일. 월 $5 이하 |
 | 감시자 감시 | Alertmanager Watchdog → healthchecks.io (dead man's switch) |
-| 시크릿 | 기본 SOPS + age (Vault + ESO는 미정, 아래 참고) |
-| 원격 접속 | Tailscale (호스트에 직접 설치) |
-| 백업 | k3s etcd 스냅샷 + restic → S3 (버킷·IAM 사용자 용도별 분리) |
+| 시크릿 | SOPS + age로 확정(ADR 0003). 호스트는 Ansible `community.sops`가 관리 PC에서 복호화해 전달, 클러스터는 ArgoCD KSOPS |
+| 원격 접속 | Tailscale (호스트에 직접 설치). **Tailscale 트래픽은 ufw를 거치지 않으므로 포트 제한은 Tailscale ACL**(ADR 0004) |
+| 백업 | k3s etcd 스냅샷 → S3 (복원 리허설 2026-10-20). 볼륨 데이터(DB) 백업은 DB가 생기면 restic 검토 |
 | AWS 접근 | 사람: IAM Identity Center(서울, 조직 인스턴스) + 로그인마다 MFA, 평소 root 사용 안 함. 관리 PC: SSO 프로필 `homelab-tfstate`(tfstate 버킷 객체만, 세션 1시간, 장기 키 없음). 미니 PC: IAM 사용자 `homelab-k3s-backup`(백업 버킷만, 장기 키, 원본은 Bitwarden). 버킷 `june21621-homelab-tfstate`·`june21621-homelab-k3s-backup`, 생성·설정은 `scripts/aws-bootstrap.sh`(CloudShell) |
 | PR 프리뷰 | 별도 repo `pr-preview-operator`(Python, kopf). 이 repo에서는 차트만 참조 |
 
 ### 호스트 vs k3s 배치 원칙
 "k3s가 통째로 안 뜰 때 이게 있어야 고칠 수 있나?" → 그렇다면 **호스트**, 아니면 **k3s**.
-- 호스트(systemd): Tailscale, WoL 스크립트(개인 PC 깨우기), etcd 스냅샷·restic 백업
+- 호스트(systemd): Tailscale, CloudWatch Agent·SSM Agent, etcd 스냅샷(k3s 내장 스케줄러)
 - k3s: 나머지 전부
-
-### 미니 PC vs 개인 PC 배치 원칙
-- 앱이 **실행 중에 의존하는 것**(스토리지, DB, 인그레스)은 앱과 같은 곳(개인 PC)에 둔다.
-  미니 PC나 네트워크가 끊겨도 앱이 멈추지 않게 하기 위함
-- **빌드·배포·관찰 도구**(Jenkins, ArgoCD, 모니터링)는 미니 PC
 - 이미지 레지스트리는 외부(GHCR). Harbor·NFS·SonarQube 같은 부가 서버를 미니 PC에 두지 않는다
 
 ## 리소스 제약 (16GB)
+- **기반 컴포넌트(k3s·ArgoCD·오퍼레이터·모니터링·cloudflared) 합계 4GB 안팎**. k3s 기반 실측 약 0.9GiB(2026-10-20)
 - **모든 Helm 차트에 requests/limits 지정**, 차트 버전 고정(`latest` 금지)
-- Jenkins 컨트롤러 힙 제한, 동시 빌드 1~2개
-- Prometheus·Loki 보존 기간 7~15일
+- Prometheus 보존 기간 7일
 - PR 프리뷰: 전역 동시 개수 상한 + 프로젝트별 상한, TTL, namespace별 ResourceQuota/LimitRange/NetworkPolicy
+- CloudWatch: 파드 단위 차원 수집 금지, 컨테이너 로그 전체 전송 금지, 로그 그룹 retention 7~14일
 
 ## repo 구조
 ```
 homelab/
-├── ansible/        # 호스트 하드닝 + k3s
-├── terraform/      # GitHub, Cloudflare, Tailscale, ArgoCD 부트스트랩
-├── gitops/         # ArgoCD 감시 경로 (apps, values, SOPS 암호화 secrets)
-├── scripts/        # 셸/파이썬 운영 스크립트
-├── docs/runbook.md # seed 절차, BIOS 설정, 수동 작업 기록
-└── Makefile        # make up / make rebuild 진입점
+├── ansible/            # 호스트 하드닝 + k3s (host_vars/*/secrets.sops.yaml은 SOPS 암호화)
+├── terraform/          # AWS, GitHub, Cloudflare, Tailscale, ArgoCD 부트스트랩
+├── gitops/             # ArgoCD 감시 경로 (apps, values, SOPS 암호화 secrets)
+├── scripts/            # 셸/파이썬 운영 스크립트 (verify-k3s.sh 등)
+├── docs/runbook.md     # seed 절차, BIOS 설정, 수동 작업 기록
+├── docs/adr/           # 설계 결정 기록
+├── docs/verification/  # 장애·복원 검증 기록 (재현 방법, 기대·실제, 감지·복구 시간)
+└── Makefile            # make host / kubeconfig / verify-k3s / etcd-restore (최종: make up)
 ```
 
 ## 진행 단계 (각 단계는 확인 기준 통과 후 다음으로)
@@ -78,21 +82,23 @@ homelab/
    - 결과: 핫스팟에서 SSH 접속 성공(LAN 주소 ping 불가로 외부망 확인), 설치·등록을 플레이북으로 이관 (2026-10-08)
 3. ✅ **S3 버킷 + IAM (수동, runbook 기록)** — `tfstate`, `k3s-backup` 버킷 / 버킷별 최소 권한 IAM / 버전 관리·암호화·퍼블릭 차단·수명 주기
    - 결과: 버킷 2개(서울, 버전 관리·SSE-S3·퍼블릭 차단·HTTPS 강제·수명 주기 90/30일) + 백업용 IAM 사용자. 관리 PC의 SSO 프로필로 tfstate만 접근되고 다른 버킷과 버킷 설정 변경은 거부됨을 확인 (2026-10-14)
-4. **k3s 설치 (Ansible)** — 위 옵션 포함
-   - 확인: etcd 스냅샷이 S3에 올라감, **스냅샷 복원 1회 실제 수행**
-   - 메모: 백업 키 전달을 위해 SOPS(age)를 Ansible용으로 먼저 도입 (클러스터용은 6단계)
-5. **ArgoCD 부트스트랩 + app-of-apps** — 이후 `kubectl apply`/`helm install` 직접 사용 금지
-6. **시크릿 (SOPS)**
-7. **모니터링** — 확인: 테스트 알림 수신, Watchdog 핑 수신
-8. **Cloudflare Tunnel**
-9. **Jenkins + 첫 파이프라인** — 샘플 앱(Stream Walkway)으로 push → 빌드 → GHCR → 매니페스트 갱신 → ArgoCD 배포 end-to-end
-10. **PR 프리뷰 오퍼레이터 연동**
-11. **장애 검증** — 전원 차단, 재부팅, 디스크 풀, 클러스터 삭제 후 재구축 (복구 시간 기록)
-12. **개인 PC 워크로드 클러스터 연동** (5·7·9단계 이후) — ArgoCD에 개인 PC k3d를 외부 클러스터로 등록(Tailscale 경유), Alloy 원격 전송, 커넥티드카 파이프라인
-    - 확인: 커넥티드카 push → 빌드 → GHCR → ArgoCD가 개인 PC에 배포 / Grafana에서 개인 PC 클러스터 지표·로그 확인 / 개인 PC를 꺼도 장애 알림이 오지 않음
+4. ✅ **k3s 설치 (Ansible) + 호스트 시크릿(SOPS)** — 방향 전환 후 "신규 1단계"
+   - 확인: etcd 스냅샷이 S3에 올라감, **스냅샷 복원 1회 실제 수행**, `make verify-k3s` 통과, 재실행 changed=0
+   - 결과: 6시간 정기 스냅샷 S3 업로드, S3 사본으로 복원 2회(API 중단 약 14~17초, `docs/verification/2026-10-20-etcd-restore.md`),
+     k3s 기반 메모리 약 0.9GiB. 발견: Tailscale이 ufw를 우회 → ACL로 제한, traefik 차트 40.x는 `service.spec.type`,
+     복원 플레이북 대기 태스크 따옴표 버그 수정. age 키는 노출되어 교체 (2026-10-18~20)
+5. **ArgoCD 부트스트랩 + GitHub Actions 파이프라인** — 이후 `kubectl apply`/`helm install` 직접 사용 금지. KSOPS, branch protection, 재사용 빌드 워크플로, 태그 PR 경로 검사
+   - 확인: 앱 push → 새 파드 배포, 태그 외 줄을 바꾼 PR은 자동 병합 거부
+6. **내부 모니터링** — 경량 kube-prometheus-stack, Alertmanager → Discord, Watchdog → healthchecks.io. 알림: OOMKilled, 재시작, ArgoCD 동기화 실패, 디스크, 마지막 S3 스냅샷 7시간 초과
+   - 확인: 테스트 알림 수신, Watchdog 핑 수신
+7. **CloudWatch + Terraform(AWS) + Cloudflare Tunnel** — SSM 하이브리드, 하트비트 알람 → SNS 이메일, Budgets $5, Tailscale ACL Terraform 이관
+   - 확인: 에이전트를 멈추면 알람 이메일 수신, 외부에서 서비스 URL 접속(인바운드 포트 0)
+8. **PR 프리뷰 오퍼레이터** — 쿼터·동시성 상한·TTL·PR 코멘트 상태 보고, README에 ApplicationSet PR Generator와 비교
+9. **장애 검증 (생략 금지)** — 전원 차단(하트비트 알람까지 시간), 프리뷰 쿼터 초과, 프리뷰 OOM, ArgoCD 동기화 실패·롤백, 재부팅 후 자동 복구, 클러스터 삭제 후 재구축. 각각 재현·기대·실제·감지/복구 시간 기록
 
 ## 작업 규칙 (반드시 지킬 것)
 - **SSH·방화벽·네트워크 설정 변경 전**: 변경 내용을 먼저 보여주고 승인받기. 기존 SSH 세션을 유지한 채 새 세션으로 접속 확인 후 다음 진행 (잠김 방지)
+  - Tailscale 경유 포트 제한은 ufw가 아니라 **Tailscale ACL**에서 한다. 방화벽 변경 후에는 바깥에서 실제로 접속해 확인(`make verify-k3s`)
 - **파괴적 명령 금지**: `rm -rf`, `kubectl delete`, 디스크 포맷, `terraform destroy` 등은 실행 전 반드시 확인
 - **ArgoCD 이후 클러스터 변경은 Git으로만**. 클러스터에는 조회·디버깅(get, describe, logs)만
 - **평문 시크릿·AWS 키·age 키·Tailscale auth key를 절대 커밋하지 않음**. `.gitignore`와 pre-commit으로 방지
@@ -104,11 +110,9 @@ homelab/
 - **문서 갱신**: 미정 사항이 결정되거나 단계가 끝나면, CLAUDE.md와 `docs/runbook.md` 변경안을 먼저 제안하고 승인받은 뒤 반영할 것. 승인 없이 이 두 파일을 직접 수정하지 않음
 
 ## 미정 사항 (해당 단계에서 사용자에게 확인)
-- 시크릿: SOPS로 확정할지, Vault + ESO로 갈지 (Vault는 재부팅 시 unseal 필요)
-- 알림 채널: Discord / Slack
-- Cloudflare에서 쓸 도메인
-- 개인 PC의 MAC 주소·IP (WoL 대상)
-- PR 프리뷰 앱을 미니 PC에 띄우는 동시 개수 상한 값
-- 개인 PC k3d API를 미니 PC에 여는 방식 (Windows Tailscale IP + 인증서 tls-san 등)과 ArgoCD에 줄 권한 범위
-- gitops/ 안에서 클러스터별 경로 구분 방식 (미니 PC / 개인 PC) — 5단계에서 결정
-- Jenkins gitops 쓰기 토큰의 범위 (gitops repo 분리 여부) — 같은 repo면 그 토큰으로 ansible/·terraform/ 코드도 바꿀 수 있음. 9단계 전 결정
+- 첫 서비스(5단계 파이프라인 확인용): 커넥티드카를 바로 올릴지, 작은 데모 앱(웹 + Postgres, 새 repo)으로 할지
+- GitHub App 2개(태그 갱신용, 프리뷰 코멘트용) 생성 — 5단계 전, 콘솔 수동
+- Terraform용 AWS 권한 세트(`homelab-terraform`: IAM·SSM·SNS·CloudWatch·Budgets) 추가 — 7단계 전
+- Cloudflare에서 쓸 도메인 (구매 예정) — 7단계 전
+- PR 프리뷰 앱을 미니 PC에 띄우는 동시 개수 상한 값 — 메모리 실측에서 역산
+- AWS 액세스 키(`homelab-k3s-backup`) 교체 주기, 또는 SSM 하이브리드 임시 자격 증명으로 대체 가능한지(7단계에서 검증)
