@@ -45,10 +45,13 @@
         name: k3s.service
         state: started
 
+    # command 모듈은 따옴표를 벗겨 내므로 jsonpath의 =="Ready"가 깨진다(2026-10-20 리허설에서 발견).
+    # 따옴표가 필요 없는 kubectl wait을 쓰고, API가 아직 안 떠 있으면 실패하므로 until로 재시도한다
     - name: 노드 Ready 대기 (최대 5분)
-      ansible.builtin.command: k3s kubectl get node homelab -o jsonpath={.status.conditions[?(@.type=="Ready")].status}
+      ansible.builtin.command:
+        argv: [k3s, kubectl, wait, --for=condition=Ready, "node/{{ inventory_hostname }}", --timeout=10s]
       register: node_ready
-      until: node_ready.stdout == 'True'
+      until: node_ready.rc == 0
       retries: 30
       delay: 10
       changed_when: false
