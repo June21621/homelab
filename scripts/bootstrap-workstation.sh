@@ -15,6 +15,10 @@ AWSCLI_SHA256="c92fde59827622889d3d38a44e2089a137894ce151a2c658a3988ecde4860caa"
 # k3s(v1.36.5+k3s1)와 같은 마이너. dl.k8s.io의 .sha256 값(2026-10-18 확인)을 고정
 KUBECTL_VERSION="1.36.5"
 KUBECTL_SHA256="33bc88a24c3b09cf55bfd59e6ca977881b61fc3f25ab65bc80c65b430248648e"
+# Helm은 관리 PC에서 미리 보기·검사(show values / template / lint)에만 쓴다. 클러스터 설치는 ArgoCD가 한다.
+# k3s helm-controller·ArgoCD와 같은 3.x 계열. get.helm.sh .sha256sum과 GitHub 릴리스 노트 값이 일치함을 확인(2026-10-20)
+HELM_VERSION="3.22.1"
+HELM_SHA256="896cf63684a42a723d61c980369d6e588330927deb13676ca0d85006dd6da0ea"
 
 if [[ "${EUID}" -eq 0 ]]; then
   echo "root가 아닌 일반 사용자로 실행하세요 (필요한 단계만 sudo 사용)" >&2
@@ -96,6 +100,17 @@ if [[ "$(kubectl version --client -o json 2>/dev/null | grep -o '"gitVersion": *
   rm -rf "${kubetmp}"
 fi
 
+# --- Helm (get.helm.sh tarball, 체크섬 고정) ---------------------------------
+log "Helm ${HELM_VERSION}"
+if [[ "$(helm version --template '{{.Version}}' 2>/dev/null)" != "v${HELM_VERSION}" ]]; then
+  helmtmp="$(mktemp -d)"
+  curl -fsSL -o "${helmtmp}/helm.tar.gz" "https://get.helm.sh/helm-v${HELM_VERSION}-linux-amd64.tar.gz"
+  echo "${HELM_SHA256}  ${helmtmp}/helm.tar.gz" | sha256sum -c -
+  tar -xzf "${helmtmp}/helm.tar.gz" -C "${helmtmp}" linux-amd64/helm
+  sudo install -m 0755 "${helmtmp}/linux-amd64/helm" /usr/local/bin/helm
+  rm -rf "${helmtmp}"
+fi
+
 # --- uv (Python 도구 관리) --------------------------------------------------
 log "uv ${UV_VERSION}"
 export PATH="${HOME}/.local/bin:${PATH}"
@@ -127,6 +142,7 @@ log "설치 결과"
 terraform version | sed -n 1p
 sops --version | sed -n 1p
 kubectl version --client | sed -n 1p
+helm version --short
 age --version
 shellcheck --version | sed -n 2p
 uv --version
