@@ -18,7 +18,10 @@ Traefik NodePort가 열려 있음**을 잡아냈다.
 ```
 
 Tailscale은 접근 제어를 자기 ACL로 한다는 전제로 tailscale0 트래픽을 ufw보다 먼저 받아들인다.
-즉 **2단계(Tailscale 설치) 이후 ufw의 tailscale0 규칙은 효과가 없었다.** LAN 쪽은 ufw가 정상적으로 막고 있다.
+즉 **2단계(Tailscale 설치) 이후 ufw의 tailscale0 규칙은 효과가 없었다.** LAN 쪽은 ufw가 막을 것으로 **예상**하지만,
+관리 PC가 무선 격리로 LAN에 닿지 않아 아직 바깥에서 확인하지 못했다(유선 기기에서 `make verify-k3s`로 확인 예정).
+또 NodePort·hostPort는 PREROUTING DNAT로 ufw(INPUT)를 거치지 않으므로, 클러스터에 그런 노출이 없다는 것을
+`verify-k3s`의 "호스트 포트 노출 없음" 검사로 따로 확인한다.
 
 ## 결정
 

@@ -83,7 +83,7 @@ homelab/
 3. ✅ **S3 버킷 + IAM (수동, runbook 기록)** — `tfstate`, `k3s-backup` 버킷 / 버킷별 최소 권한 IAM / 버전 관리·암호화·퍼블릭 차단·수명 주기
    - 결과: 버킷 2개(서울, 버전 관리·SSE-S3·퍼블릭 차단·HTTPS 강제·수명 주기 90/30일) + 백업용 IAM 사용자. 관리 PC의 SSO 프로필로 tfstate만 접근되고 다른 버킷과 버킷 설정 변경은 거부됨을 확인 (2026-10-14)
 4. ✅ **k3s 설치 (Ansible) + 호스트 시크릿(SOPS)** — 방향 전환 후 "신규 1단계"
-   - 확인: etcd 스냅샷이 S3에 올라감, **스냅샷 복원 1회 실제 수행**, `make verify-k3s` 통과, 재실행 changed=0
+   - 확인: etcd 스냅샷이 S3에 올라감, **스냅샷 복원 1회 실제 수행**, `make verify-k3s` 통과 (LAN 포트는 유선 기기에서 미확인), 재실행 changed=0
    - 결과: 6시간 정기 스냅샷 S3 업로드, S3 사본으로 복원 2회(API 중단 약 14~17초, `docs/verification/2026-10-20-etcd-restore.md`),
      k3s 기반 메모리 약 0.9GiB. 발견: Tailscale이 ufw를 우회 → ACL로 제한, traefik 차트 40.x는 `service.spec.type`,
      복원 플레이북 대기 태스크 따옴표 버그 수정. age 키는 노출되어 교체 (2026-10-18~20)

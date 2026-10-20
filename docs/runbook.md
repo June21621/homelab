@@ -13,7 +13,7 @@
 - Tailscale 버전을 올릴 때도 LAN IP로 실행 (tailscaled 재시작으로 Tailscale 경유 연결이 끊김)
 - k3s는 `make host`가 함께 설치한다(토큰·백업 키는 SOPS 파일에서). 이어서 관리 PC에서 `make kubeconfig` → `make verify-k3s`
 - 클러스터 상태를 S3 백업으로 되돌릴 때: 미니 PC에서 `sudo k3s etcd-snapshot ls`로 이름 확인(또는 관리 PC에서
-  `kubectl get etcdsnapshotfiles`) → 관리 PC에서 `make etcd-restore SNAPSHOT=<이름>` → `yes` → **`make verify-k3s`로 확인**
+  `kubectl get etcdsnapshotfiles`) → 관리 PC에서 `make etcd-restore SNAPSHOT=<이름>` → `yes` → **1~2분 뒤 `make verify-k3s`로 확인**
   (플레이북 성공만 믿지 말 것. 복원된 etcd의 노드 상태가 이미 Ready라 kubelet 보고 전에도 통과할 수 있음)
   - etcd 스냅샷에는 볼륨 데이터(DB 파일)가 없다. 스냅샷 이후의 배포 변경은 ArgoCD(5단계 이후)가 Git 기준으로 되돌린다
 
