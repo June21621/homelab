@@ -45,6 +45,32 @@ def check_argocd(docs):
         # applicationset은 차트에 끄는 옵션이 없어 replicas 0으로 끈다 (파드 없음 = 메모리 0)
         if any(part in name for part in DISABLED_ARGOCD_PARTS) and w["spec"].get("replicas", 1) != 0:
             errors.append(f"꺼야 할 컴포넌트가 떠 있음: {w['kind']}/{name}")
+    return errors + check_ksops(docs)
+
+
+def check_ksops(docs):
+    """repo-server가 KSOPS로 gitops/의 SOPS 파일을 풀 수 있는지 (5-2)"""
+    errors = []
+    repo = [w for w in workloads(docs) if w["metadata"]["name"] == "argocd-repo-server"]
+    if len(repo) != 1:
+        return ["argocd-repo-server Deployment가 없음"]
+    spec = repo[0]["spec"]["template"]["spec"]
+    if not any(c.get("image", "").startswith("viaductoss/ksops:") for c in spec.get("initContainers", [])):
+        errors.append("repo-server: KSOPS init 컨테이너 없음")
+    main = next((c for c in spec["containers"] if c["name"] == "repo-server"), {})
+    env = {e["name"]: e.get("value") for e in main.get("env", [])}
+    if not env.get("SOPS_AGE_KEY_FILE"):
+        errors.append("repo-server: SOPS_AGE_KEY_FILE 없음")
+    mounts = {m["mountPath"] for m in main.get("volumeMounts", [])}
+    if "/usr/local/bin/ksops" not in mounts:
+        errors.append("repo-server: /usr/local/bin/ksops 마운트 없음")
+    secret_vols = {v.get("secret", {}).get("secretName") for v in spec.get("volumes", [])}
+    if "sops-age" not in secret_vols:
+        errors.append("repo-server: sops-age Secret 볼륨 없음")
+    cms = [d for d in docs if d.get("kind") == "ConfigMap" and d["metadata"]["name"] == "argocd-cm"]
+    opts = ((cms[0].get("data") or {}) if cms else {}).get("kustomize.buildOptions", "")
+    if "--enable-exec" not in opts or "--enable-alpha-plugins" not in opts:
+        errors.append("argocd-cm: kustomize.buildOptions에 --enable-alpha-plugins --enable-exec 필요")
     return errors
 
 

@@ -47,12 +47,16 @@ etcd-restore: deps agent ## etcd를 S3 스냅샷으로 복원 (SNAPSHOT=<파일�
 	SNAPSHOT="$(SNAPSHOT)" $(ANSIBLE) etcd-restore.yml
 
 argocd-bootstrap: ## ArgoCD 첫 설치 (Terraform, 재구축 때만. SSO 로그인 필요)
-	@aws sts get-caller-identity --profile $(AWS_TFSTATE_PROFILE) >/dev/null 2>&1 || aws sso login --profile $(AWS_TFSTATE_PROFILE)
+	@# WSL은 브라우저를 직접 못 열어서 코드 입력 방식으로 로그인한다
+	@aws sts get-caller-identity --profile $(AWS_TFSTATE_PROFILE) >/dev/null 2>&1 || aws sso login --profile $(AWS_TFSTATE_PROFILE) --use-device-code
 	$(TF_ARGOCD) init -input=false
 	$(TF_ARGOCD) apply
 
 verify-argocd: ## ArgoCD 확인: 모든 Application이 Synced·Healthy (STATIC=1이면 repo 파일만 검사)
 	bash scripts/verify-argocd.sh $(if $(STATIC),--static)
 
-argocd-ui: ## ArgoCD 웹 UI 터널 → https://localhost:8080 (Ctrl+C로 종료)
-	KUBECONFIG=$(HOME)/.kube/homelab.yaml kubectl -n argocd port-forward svc/argocd-server 8080:443
+argocd-ui: ## ArgoCD 웹 UI 터널 (출력된 주소를 Windows 브라우저에서 열기, Ctrl+C로 종료)
+	@# 이 PC는 WSL의 localhost가 Windows로 전달되지 않아 WSL 가상 NIC 주소에도 연다(LAN에서는 안 보임)
+	@ip="$$(hostname -I | awk '{print $$1}')"; \
+	echo "Windows 브라우저: https://$${ip}:8080   (WSL 안: https://localhost:8080)"; \
+	KUBECONFIG=$(HOME)/.kube/homelab.yaml kubectl -n argocd port-forward --address "127.0.0.1,$${ip}" svc/argocd-server 8080:443
