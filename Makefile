@@ -5,9 +5,12 @@ SHELL := /usr/bin/env bash
 # repo가 Windows 폴더(/mnt/c)에 있어 권한이 어긋나면 Ansible이 ansible.cfg를 무시하므로 경로를 명시한다.
 export ANSIBLE_CONFIG := $(CURDIR)/ansible/ansible.cfg
 
-.PHONY: help workstation hooks lint deps agent host host-check kubeconfig verify-k3s etcd-restore
+.PHONY: help workstation hooks lint deps agent host host-check kubeconfig verify-k3s etcd-restore \
+	argocd-bootstrap verify-argocd argocd-ui
 
 ANSIBLE := cd ansible && ansible-playbook
+TF_ARGOCD := terraform -chdir=terraform/argocd-bootstrap
+AWS_TFSTATE_PROFILE := homelab-tfstate
 
 help: ## 사용 가능한 명령 목록
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk -F':.*?## ' '{printf "  %-14s %s\n", $$1, $$2}'
@@ -42,3 +45,14 @@ verify-k3s: ## k3s 설치 결과 확인 (노드·파드·DNS·포트)
 etcd-restore: deps agent ## etcd를 S3 스냅샷으로 복원 (SNAPSHOT=<파일명> 필수, 되돌릴 수 없음)
 	@test -n "$(SNAPSHOT)" || { echo "SNAPSHOT=<파일명>을 지정하세요" >&2; exit 1; }
 	SNAPSHOT="$(SNAPSHOT)" $(ANSIBLE) etcd-restore.yml
+
+argocd-bootstrap: ## ArgoCD 첫 설치 (Terraform, 재구축 때만. SSO 로그인 필요)
+	@aws sts get-caller-identity --profile $(AWS_TFSTATE_PROFILE) >/dev/null 2>&1 || aws sso login --profile $(AWS_TFSTATE_PROFILE)
+	$(TF_ARGOCD) init -input=false
+	$(TF_ARGOCD) apply
+
+verify-argocd: ## ArgoCD 확인: 모든 Application이 Synced·Healthy (STATIC=1이면 repo 파일만 검사)
+	bash scripts/verify-argocd.sh $(if $(STATIC),--static)
+
+argocd-ui: ## ArgoCD 웹 UI 터널 → https://localhost:8080 (Ctrl+C로 종료)
+	KUBECONFIG=$(HOME)/.kube/homelab.yaml kubectl -n argocd port-forward svc/argocd-server 8080:443

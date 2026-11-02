@@ -15,7 +15,7 @@ repos:
       - id: check-merge-conflict
       - id: check-yaml
         args: [--allow-multiple-documents]
-        exclude: ^gitops/.*templates/
+        exclude: ^(gitops/.*|terraform/.*-chart/)templates/  # Helm 템플릿은 렌더링 전엔 YAML이 아님
       - id: end-of-file-fixer
       - id: trailing-whitespace
       - id: mixed-line-ending

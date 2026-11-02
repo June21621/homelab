@@ -1,0 +1,27 @@
+# ArgoCD 자신. Terraform이 처음 한 번 설치한 뒤로는 이 Application이 ArgoCD를 관리한다.
+# 업그레이드 = 아래 targetRevision(차트 버전)을 바꾸는 PR. Terraform도 이 파일에서 버전을 읽는다.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: argocd
+  namespace: argocd
+spec:
+  project: default
+  sources:
+    - repoURL: https://argoproj.github.io/argo-helm
+      chart: argo-cd
+      targetRevision: 10.10.5   # ArgoCD v3.5.5 (2026-10-15)
+      helm:
+        releaseName: argocd
+        valueFiles:
+          - $values/gitops/platform/argocd/values.yaml
+    - repoURL: https://github.com/June21621/homelab.git
+      targetRevision: main
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

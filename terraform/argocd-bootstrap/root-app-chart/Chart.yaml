@@ -1,0 +1,5 @@
+apiVersion: v2
+name: root-app
+description: 루트 Application을 빈 클러스터에 한 번 꽂는 차트. 내용은 Terraform이 gitops/root/root.yaml에서 넘긴다
+type: application
+version: 0.1.0
