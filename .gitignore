@@ -31,6 +31,9 @@ __pycache__/
 *.pyc
 .venv/
 
+# --- 작업용 임시 파일 (기여·블로그 초안, 구현 작업 기록) ---
+.superpowers/
+
 # --- 에디터·OS ---
 .vscode/
 .idea/
