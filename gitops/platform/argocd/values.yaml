@@ -1,0 +1,40 @@
+# argo-cd 차트 values. 첫 설치(terraform/argocd-bootstrap)와 이후 자기 관리(gitops/root/argocd.yaml)가
+# 이 파일 한 벌을 같이 읽는다. 차트 버전은 gitops/root/argocd.yaml에 있다.
+# 메모리 값은 시작값이다. 설치 후 `kubectl top pods -n argocd`로 실측해 조정한다.
+
+# --- 끄는 컴포넌트 (설계 §3.2) ---
+dex:
+  enabled: false        # SSO 안 씀: admin 계정 하나, 접속은 Tailscale 경유 port-forward로만
+notifications:
+  enabled: false        # 알림은 6단계 Alertmanager → Discord로 한곳에
+applicationSet:
+  replicas: 0           # 이 차트 버전엔 끄는 옵션이 없어 파드 0개로 끈다. 8단계 비교 때 다시 켬
+  resources:
+    requests: { cpu: 10m, memory: 32Mi }
+    limits: { memory: 64Mi }
+
+# --- 켜는 컴포넌트 ---
+controller:             # Git 상태와 클러스터 상태를 비교·동기화
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { memory: 512Mi }
+repoServer:             # Git을 받아 Helm·Kustomize로 렌더링
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { memory: 512Mi }
+  copyutil:
+    resources:
+      requests: { cpu: 10m, memory: 16Mi }
+      limits: { memory: 64Mi }
+server:                 # 웹 UI·API (외부 노출 없음)
+  resources:
+    requests: { cpu: 25m, memory: 64Mi }
+    limits: { memory: 256Mi }
+redis:                  # 렌더링 결과 캐시
+  resources:
+    requests: { cpu: 10m, memory: 32Mi }
+    limits: { memory: 128Mi }
+redisSecretInit:        # 설치 때 한 번 도는 redis 비밀번호 생성 Job
+  resources:
+    requests: { cpu: 10m, memory: 32Mi }
+    limits: { memory: 64Mi }

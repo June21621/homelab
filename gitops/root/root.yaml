@@ -1,0 +1,21 @@
+# 루트 앱(app-of-apps). gitops/root/ 아래의 Application들을 만들고 관리한다.
+# 이 파일도 gitops/root/ 안에 있으므로 루트 앱은 자기 자신까지 Git으로 관리한다.
+# Terraform은 빈 클러스터에 이 파일을 한 번만 꽂는다(terraform/argocd-bootstrap).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: root
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/June21621/homelab.git
+    targetRevision: main
+    path: gitops/root
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
