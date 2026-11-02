@@ -1,5 +1,17 @@
 # SOPS 암호화 규칙. 공개키만 있으므로 커밋해도 안전하다.
 # 개인키: 관리 PC WSL ~/.config/sops/age/keys.txt (백업: Bitwarden "homelab-sops-age")
+#
+# 규칙은 위에서부터 처음 맞는 것 하나만 쓴다.
 creation_rules:
+  # 클러스터(ArgoCD KSOPS)가 풀어야 하는 gitops/ 시크릿: 관리자 키 + 클러스터 전용 키
+  #   클러스터 키 개인키: argocd/sops-age Secret(Terraform이 넣음), 백업: Bitwarden "homelab-cluster-age"
+  #   클러스터가 털려도 아래 규칙의 호스트 시크릿은 관리자 키로만 잠겨 있어 안전하다 (ADR 0008)
+  #   값(data·stringData)만 암호화해 PR에서 어떤 Secret이 바뀌었는지는 보이게 한다
+  - path_regex: ^gitops/.*\.sops\.ya?ml$
+    encrypted_regex: ^(data|stringData)$
+    age: >-
+      age1p3jvjl72r73cy6m4c65as522awqzq0l3epv6un8t368rnf6raslstsnyqd,
+      age1fsuk6npv2skgwdzx8krhxxrxjtz3z76g02vrj8ylpsalweep2ghs4hxtwr
+  # 그 밖(ansible/ 호스트 시크릿 등): 관리자 키만
   - path_regex: \.sops\.ya?ml$
     age: age1p3jvjl72r73cy6m4c65as522awqzq0l3epv6un8t368rnf6raslstsnyqd

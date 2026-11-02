@@ -1,0 +1,33 @@
+# KSOPS 확인용 테스트 Secret (값은 비밀이 아님). 5-2 확인 후 삭제한다
+apiVersion: v1
+kind: Secret
+metadata:
+    name: ksops-test
+    namespace: ksops-test
+type: Opaque
+stringData:
+    hello: ENC[AES256_GCM,data:hAzqZZw=,iv:O4HEELSY0FghbQXtBugzPkTN8umNGKC/fH0WZpievm0=,tag:IawZ2/ML+z+FP8nffxqMbg==,type:str]
+sops:
+    age:
+        - enc: |
+            -----BEGIN AGE ENCRYPTED FILE-----
+            YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBhcUs3amo0emxZZkRkYU1Q
+            dm9iQlFabGl2T3owRVh0emd5UzV5M2d2bm1nCm5YVHpNazcwUlVlMUNYSUUvbjdY
+            alBSVEQ5QVlISjZodW5YNTNiOVY2U2sKLS0tIHovSXZaUk1BMmE5eHBoUE8zb1Rz
+            clJ1dTh3RVFEamtpNGFnbDdYclVxaWcKccbx1aB6hAj0ca6qqDsCKmJ1RJzHl9WB
+            fJHo3DdmobG8SUvPJkUJqdOnk3ABfElDZvSB+LMYS2OyMUKQ4/3iEQ==
+            -----END AGE ENCRYPTED FILE-----
+          recipient: age1p3jvjl72r73cy6m4c65as522awqzq0l3epv6un8t368rnf6raslstsnyqd
+        - enc: |
+            -----BEGIN AGE ENCRYPTED FILE-----
+            YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSAvWVFxTzRQbnJyZXJLYjFj
+            ay8xZVBaVXErQTd2ZWI0VlFtVHNzT2xjM1NnCjFhMUxxSk5NWm90Tkh6c2FPRkk2
+            VkxMcjFQeTlxbTRUakRsQXJ6ckF1L0kKLS0tIEF1em9WbGczUEhsTWt6S2hCalF6
+            cTMwU2lYZWwvUzNsRHJ5ZS9vb3dhQncK1UjGyW3QlnBA4GtCjHBkfhHiuI4Aycu7
+            ooH42lGq1UreR7SZiTss/sTZR7hbM8lmp7Jn2Sgnkoi9Yhv3Ug+3UA==
+            -----END AGE ENCRYPTED FILE-----
+          recipient: age1fsuk6npv2skgwdzx8krhxxrxjtz3z76g02vrj8ylpsalweep2ghs4hxtwr
+    encrypted_regex: ^(data|stringData)$
+    lastmodified: "2026-11-02T06:18:16Z"
+    mac: ENC[AES256_GCM,data:W3xG2agisZtKNmUzb5wW+mMiSPhPMvy9IV6ABWYw3CHA34Y26TUuQUKInvCazbo4BNEuZ1KzTY6rnnpxeepJZa/A4/TbllyeekHebNqCs1MsjfUtAES0KQr5S0EwQdaGIFwhIGWkHckhhp7Ty1Sb289AmNuVFjKb7Q51tWCwi/I=,iv:WJ7FVC1hhR+/dpu4fkHKlS1AQHreZ1eWNk+JXHQU/qM=,tag:DCU0kMrf4iujilI29hl78Q==,type:str]
+    version: 3.13.3

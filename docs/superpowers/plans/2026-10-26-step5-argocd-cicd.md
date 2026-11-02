@@ -241,6 +241,7 @@
 - Produces: 필수 검사 컨텍스트 `tag-pr-guard`(GitHub Actions 앱), repo 설정 `allow_auto_merge = true`
 
 - [ ] **Step 1: 워크플로** — `on: pull_request: branches: [main]`(경로 필터 없음 — 모든 PR에서 돌아야 필수 검사가 충족됨). permissions `contents: read, pull-requests: write`. checkout `ref: ${{ github.event.pull_request.base.sha }}`(**PR 코드가 아니라 base**), uv 설치, `tag-pr-guard --repo "$REPO" --pr "$PR" --author "$AUTHOR" --report report.md`(값은 `env:`로), 실패 시 `gh pr comment "$PR" --body-file report.md` 후 exit 1
+- [ ] **Step 1b: 정적 검사 job 추가 (사용자 요청 2026-11-02)** — 같은 워크플로에 job `static-checks`: base가 아니라 **PR 코드**를 checkout해 `make verify-argocd STATIC=1`(이후 Task 5의 kustomize 검사 포함)과 `terraform fmt -check`·`validate`를 돌린다. PR 코드를 실행하지만 결과는 통과/실패뿐이고 쓰기 권한·비밀값이 없으므로(`permissions: contents: read`) 안전. ruleset 필수 검사에 `static-checks`도 추가(Step 4)
 - [ ] **Step 2: 주입 방지 검사** — `grep -nE '\$\{\{ *github\.event\.pull_request\.(title|body|head\.ref)' .github/workflows/*.yaml` → 결과 없음, actionlint PASS
 - [ ] **Step 3: 커밋 → 사용자 PR·병합** (ruleset 전에 워크플로가 main에 있어야 필수 검사가 존재함)
 - [ ] **Step 4: Terraform github** — provider `integrations/github` 고정, owner `June21621`, 토큰은 `GITHUB_TOKEN` 환경 변수. `import` 블록으로 기존 `homelab` repo → `github_repository.homelab`(visibility `public`, `allow_auto_merge = true`, `delete_branch_on_merge = true`, `lifecycle { prevent_destroy = true }`, 나머지 속성은 import 후 plan에서 변경 0이 되도록 맞춤). `github_repository_ruleset.main`: target `~DEFAULT_BRANCH`, rules `deletion`, `non_fast_forward`, `pull_request`(승인 0), `required_status_checks`(context `tag-pr-guard`), bypass 없음

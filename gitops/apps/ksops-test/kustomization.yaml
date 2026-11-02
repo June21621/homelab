@@ -1,0 +1,5 @@
+# 5-2 KSOPS 확인용 앱. 확인이 끝나면 이 폴더와 gitops/root/ksops-test.yaml을 지운다
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+generators:
+  - ./secret-generator.yaml

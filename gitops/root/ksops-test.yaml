@@ -1,0 +1,21 @@
+# 5-2 KSOPS 확인용 (확인 후 삭제)
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: ksops-test
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/June21621/homelab.git
+    targetRevision: main
+    path: gitops/apps/ksops-test
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: ksops-test
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
