@@ -26,6 +26,12 @@ repos:
     hooks:
       - id: shellcheck
 
+  # GitHub Actions 워크플로 검사 (run: 안의 셸은 shellcheck로)
+  - repo: https://github.com/rhysd/actionlint
+    rev: v1.7.12
+    hooks:
+      - id: actionlint
+
   - repo: https://github.com/antonbabenko/pre-commit-terraform
     rev: v1.109.2
     hooks:
