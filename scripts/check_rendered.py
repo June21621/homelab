@@ -91,7 +91,26 @@ def check_root(docs):
     return errors
 
 
-CHECKS = {"argocd": check_argocd, "root": check_root}
+FINALIZER = "resources-finalizer.argocd.argoproj.io"
+# 지우면 ArgoCD 자신이 통째로 삭제되므로 finalizer를 달면 안 되는 앱
+PROTECTED_APPS = {"argocd", "root"}
+
+
+def check_apps(docs):
+    """gitops/root/의 Application들: 서비스 앱은 Git에서 지우면 리소스까지 정리(finalizer),
+    argocd·root는 정의를 실수로 지워도 ArgoCD가 살아남게(finalizer 금지)"""
+    errors = []
+    for app in (d for d in docs if d.get("kind") == "Application"):
+        name = app["metadata"]["name"]
+        has = FINALIZER in (app["metadata"].get("finalizers") or [])
+        if name in PROTECTED_APPS and has:
+            errors.append(f"{name}: {FINALIZER} 금지 (지우면 ArgoCD까지 삭제됨)")
+        elif name not in PROTECTED_APPS and not has:
+            errors.append(f"{name}: {FINALIZER} 필요 (없으면 앱을 지워도 리소스가 남음)")
+    return errors
+
+
+CHECKS = {"argocd": check_argocd, "root": check_root, "apps": check_apps}
 
 
 def main(argv):

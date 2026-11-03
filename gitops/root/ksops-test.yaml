@@ -4,6 +4,9 @@ kind: Application
 metadata:
   name: ksops-test
   namespace: argocd
+  # 이 Application을 지우면 ArgoCD가 앱의 리소스(Secret·Namespace)를 먼저 지운 뒤 앱을 지운다
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
 spec:
   project: default
   source:

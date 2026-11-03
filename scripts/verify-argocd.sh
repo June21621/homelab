@@ -48,6 +48,15 @@ render_argocd() {
     --version "${version}" --namespace argocd --kube-version 1.36.5 -f "${ARGOCD_VALUES}"
 }
 
+# gitops/root/의 모든 Application (파일마다 --- 를 붙여 여러 문서로 이어 붙인다)
+apps_finalizer_ok() {
+  local f
+  for f in gitops/root/*.yaml; do
+    echo '---'
+    cat "${f}"
+  done | uv run --quiet --script scripts/check_rendered.py apps
+}
+
 argocd_render_ok() {
   local out
   out="$(render_argocd)" || return 1
@@ -58,6 +67,7 @@ static_checks() {
   check "Terraform이 차트 버전·values·루트 앱을 gitops/에서 읽음" tf_reads_single_source
   check "argo-cd 차트 렌더링: 끈 컴포넌트 없음, 모든 컨테이너 limits" argocd_render_ok
   check "루트 앱: gitops/root를 main에서 자동 동기화(prune·selfHeal)" root_app_ok
+  check "서비스 앱은 finalizer 있음, argocd·root는 없음" apps_finalizer_ok
 }
 
 APPS=""
