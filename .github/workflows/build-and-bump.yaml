@@ -1,0 +1,83 @@
+# 앱 repo들이 호출하는 재사용 워크플로: 이미지 빌드 → GHCR → 빌드 증명서
+# (태그 PR을 여는 bump job은 다음 단계에서 추가)
+#
+# 호출 예 (앱 repo의 .github/workflows/ci.yaml):
+#   build:
+#     needs: test
+#     permissions: {contents: read, packages: write, id-token: write, attestations: write}
+#     uses: June21621/homelab/.github/workflows/build-and-bump.yaml@main
+#     with: {app: portfolio, image: ghcr.io/june21621/portfolio}
+#     secrets: inherit
+#
+# 재사용 워크플로 안의 github.* 는 호출한 앱 repo의 값이다(github.sha = 앱 커밋).
+# 빌드 증명서의 서명 워크플로는 이 파일이 되므로, 태그 PR 검사는
+# "이 워크플로로 앱 repo main에서 빌드된 이미지인가"를 확인할 수 있다.
+name: build-and-bump
+
+on:
+  workflow_call:
+    inputs:
+      app:
+        description: gitops/apps 아래 앱 폴더 이름
+        type: string
+        required: true
+      image:
+        description: 이미지 이름 (소문자, 태그 없이). 예 ghcr.io/june21621/portfolio
+        type: string
+        required: true
+    outputs:
+      digest:
+        description: push한 이미지 다이제스트 (main이 아니면 빈 값)
+        value: ${{ jobs.build.outputs.digest }}
+
+permissions: {}
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write # GHCR push
+      id-token: write # 빌드 증명서 서명(Sigstore OIDC)
+      attestations: write # 증명서 저장
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+    env:
+      IS_MAIN: ${{ github.ref == 'refs/heads/main' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - id: meta
+        run: echo "build_time=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "${GITHUB_OUTPUT}"
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - if: env.IS_MAIN == 'true'
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # main이 아니면(PR 등) 빌드만 해서 Dockerfile이 깨지지 않았는지 확인하고 push는 안 한다
+      - id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          push: ${{ env.IS_MAIN == 'true' }}
+          tags: ${{ inputs.image }}:${{ github.sha }}
+          build-args: |
+            GIT_SHA=${{ github.sha }}
+            BUILD_TIME=${{ steps.meta.outputs.build_time }}
+          cache-from: type=gha,scope=${{ inputs.app }}
+          cache-to: type=gha,mode=max,scope=${{ inputs.app }}
+
+      - if: env.IS_MAIN == 'true'
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ inputs.image }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
