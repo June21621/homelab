@@ -33,6 +33,7 @@ __pycache__/
 
 # --- 작업용 임시 파일 (기여·블로그 초안, 구현 작업 기록) ---
 .superpowers/
+blog-notes/
 
 # --- 에디터·OS ---
 .vscode/
