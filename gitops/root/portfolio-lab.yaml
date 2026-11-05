@@ -1,0 +1,21 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: portfolio-lab
+  namespace: argocd
+  # Git에서 이 파일을 지우면 앱의 리소스(Namespace 포함)까지 정리한다
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/June21621/homelab.git
+    targetRevision: main
+    path: gitops/apps/portfolio/overlays/lab
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: portfolio-lab
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

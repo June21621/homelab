@@ -1,0 +1,8 @@
+# 태그 PR 검사(scripts/tag_pr_guard)와 bump job이 읽는 앱 ↔ 이미지 매핑
+# 앱을 추가하면 여기에 한 줄 + gitops/apps/<앱>/overlays/*/kustomization.yaml의 images
+bot_login: "" # 태그 PR을 여는 GitHub App 계정 (<slug>[bot]), App을 만들 때 채운다
+signer_workflow: June21621/homelab/.github/workflows/build-and-bump.yaml
+apps:
+  portfolio:
+    repo: June21621/portfolio
+    image: ghcr.io/june21621/portfolio

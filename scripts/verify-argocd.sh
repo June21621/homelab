@@ -57,6 +57,13 @@ apps_finalizer_ok() {
   done | uv run --quiet --script scripts/check_rendered.py apps
 }
 
+# 직접 만든 앱의 overlay를 렌더링해 검사. 사용: app_overlay_ok <앱> <overlay> <검사 이름>
+app_overlay_ok() {
+  local out
+  out="$(kubectl kustomize "gitops/apps/$1/overlays/$2")" || return 1
+  uv run --quiet --script scripts/check_rendered.py "$3" <<<"${out}"
+}
+
 argocd_render_ok() {
   local out
   out="$(render_argocd)" || return 1
@@ -68,6 +75,8 @@ static_checks() {
   check "argo-cd 차트 렌더링: 끈 컴포넌트 없음, 모든 컨테이너 limits" argocd_render_ok
   check "루트 앱: gitops/root를 main에서 자동 동기화(prune·selfHeal)" root_app_ok
   check "서비스 앱은 finalizer 있음, argocd·root는 없음" apps_finalizer_ok
+  check "portfolio prod: 제한·보안 설정·SHA 태그·Namespace, chaos 꺼짐" app_overlay_ok portfolio prod app-prod
+  check "portfolio lab: 제한·보안 설정·SHA 태그·Namespace, chaos 켜짐" app_overlay_ok portfolio lab app-lab
 }
 
 APPS=""

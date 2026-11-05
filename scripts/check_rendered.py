@@ -8,6 +8,7 @@
 통과하면 0, 아니면 위반 목록을 출력하고 1.
 """
 
+import re
 import sys
 
 import yaml
@@ -91,6 +92,35 @@ def check_root(docs):
     return errors
 
 
+SHA_TAG = re.compile(r":[0-9a-f]{40}$")
+
+
+def check_app(docs, chaos):
+    """직접 만든 앱(kustomize overlay 렌더링 결과): 메모리 제한, 컨테이너 보안 설정, 이미지 태그는 커밋 SHA,
+    Namespace를 앱 리소스로 포함(앱을 지우면 finalizer가 함께 정리), chaos는 lab에서만"""
+    errors = check_resources(docs)
+    if not any(d.get("kind") == "Namespace" for d in docs):
+        errors.append("Namespace 리소스 없음 (CreateNamespace로 만든 네임스페이스는 앱을 지워도 남음)")
+    for w in workloads(docs):
+        pod = w["spec"]["template"]["spec"]
+        for c in containers(w):
+            where = f"{w['metadata']['name']}/{c['name']}"
+            sec = c.get("securityContext") or {}
+            if not (sec.get("runAsNonRoot") or (pod.get("securityContext") or {}).get("runAsNonRoot")):
+                errors.append(f"{where}: runAsNonRoot: true 필요")
+            if not sec.get("readOnlyRootFilesystem"):
+                errors.append(f"{where}: readOnlyRootFilesystem: true 필요")
+            if not SHA_TAG.search(c.get("image", "")):
+                errors.append(f"{where}: 이미지 태그는 40자 커밋 SHA ({c.get('image')})")
+            env = {e["name"]: e.get("value") for e in c.get("env", [])}
+            on = env.get("CHAOS_ENABLED") == "true"
+            if on and not chaos:
+                errors.append(f"{where}: prod에서는 CHAOS_ENABLED가 꺼져 있어야 함")
+            if chaos and not on:
+                errors.append(f"{where}: lab에서는 CHAOS_ENABLED=true 필요")
+    return errors
+
+
 FINALIZER = "resources-finalizer.argocd.argoproj.io"
 # 지우면 ArgoCD 자신이 통째로 삭제되므로 finalizer를 달면 안 되는 앱
 PROTECTED_APPS = {"argocd", "root"}
@@ -110,7 +140,13 @@ def check_apps(docs):
     return errors
 
 
-CHECKS = {"argocd": check_argocd, "root": check_root, "apps": check_apps}
+CHECKS = {
+    "argocd": check_argocd,
+    "root": check_root,
+    "apps": check_apps,
+    "app-prod": lambda docs: check_app(docs, chaos=False),
+    "app-lab": lambda docs: check_app(docs, chaos=True),
+}
 
 
 def main(argv):
