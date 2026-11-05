@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: portfolio
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  template:
+    spec:
+      automountServiceAccountToken: false # 쿠버네티스 API를 쓰지 않는다
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001 # Dockerfile의 사용자
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: portfolio
+          image: ghcr.io/june21621/portfolio # 태그는 overlays의 images.newTag
+          ports:
+            - name: http
+              containerPort: 8000
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          readinessProbe:
+            httpGet: {path: /readyz, port: http}
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 10
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 25m
+              memory: 64Mi
+            limits:
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        # 루트 파일시스템이 읽기 전용이라 임시 파일이 필요하면 여기에만 쓴다
+        - name: tmp
+          emptyDir:
+            sizeLimit: 16Mi

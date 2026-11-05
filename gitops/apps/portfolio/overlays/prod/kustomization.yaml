@@ -1,0 +1,10 @@
+# 운영: chaos 엔드포인트 없음
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: portfolio
+resources:
+  - ./namespace.yaml
+  - ../../base
+images:
+  - name: ghcr.io/june21621/portfolio
+    newTag: "20c78305e3cb232a8e0e66c27073073dae66651a"
