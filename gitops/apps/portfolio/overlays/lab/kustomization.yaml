@@ -9,4 +9,4 @@ patches:
   - path: ./chaos-patch.yaml
 images:
   - name: ghcr.io/june21621/portfolio
-    newTag: "20c78305e3cb232a8e0e66c27073073dae66651a"
+    newTag: "a4085114bc9c3a958e200220c68d7741ae056757"
