@@ -1,5 +1,4 @@
-# 앱 repo들이 호출하는 재사용 워크플로: 이미지 빌드 → GHCR → 빌드 증명서
-# (태그 PR을 여는 bump job은 다음 단계에서 추가)
+# 앱 repo들이 호출하는 재사용 워크플로: 이미지 빌드 → GHCR → 빌드 증명서 → homelab에 태그 PR
 #
 # 호출 예 (앱 repo의 .github/workflows/ci.yaml):
 #   build:
@@ -25,6 +24,11 @@ on:
         description: 이미지 이름 (소문자, 태그 없이). 예 ghcr.io/june21621/portfolio
         type: string
         required: true
+    secrets:
+      TAG_BUMP_APP_CLIENT_ID:
+        required: false # main 빌드의 bump job에서만 쓴다
+      TAG_BUMP_APP_PRIVATE_KEY:
+        required: false
     outputs:
       digest:
         description: push한 이미지 다이제스트 (main이 아니면 빈 값)
@@ -81,3 +85,72 @@ jobs:
           subject-name: ${{ inputs.image }}
           subject-digest: ${{ steps.build.outputs.digest }}
           push-to-registry: true
+
+  # 앱 repo의 GITHUB_TOKEN은 homelab에 쓸 수 없고, 그 토큰으로 연 PR은 다른 워크플로도
+  # 깨우지 못한다. 그래서 homelab에만 설치한 GitHub App의 단기 토큰으로 PR을 연다.
+  bump:
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions: {}
+    env:
+      APP: ${{ inputs.app }}
+      IMAGE: ${{ inputs.image }}
+      SHA: ${{ github.sha }}
+      SOURCE_REPO: ${{ github.repository }}
+      HOMELAB: June21621/homelab
+    steps:
+      - id: token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ secrets.TAG_BUMP_APP_CLIENT_ID }}
+          private-key: ${{ secrets.TAG_BUMP_APP_PRIVATE_KEY }}
+          owner: June21621
+          repositories: homelab
+          permission-contents: write
+          permission-pull-requests: write
+
+      # 스크립트도 homelab main의 것을 쓴다. 앱 repo는 태그를 바꾸는 방법을 정할 수 없다
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: June21621/homelab
+          ref: main
+          token: ${{ steps.token.outputs.token }}
+
+      - run: bash scripts/bump-tag.sh "${APP}" "${IMAGE}" "${SHA}"
+
+      - name: 태그 PR 열기
+        env:
+          GH_TOKEN: ${{ steps.token.outputs.token }}
+          APP_SLUG: ${{ steps.token.outputs.app-slug }}
+        run: |
+          if git diff --quiet; then
+            echo "이미 ${SHA} 태그라 PR을 만들지 않는다"
+            exit 0
+          fi
+
+          short="${SHA:0:7}"
+          branch="bump/${APP}-${short}"
+          bot_id="$(gh api "users/${APP_SLUG}%5Bbot%5D" --jq .id)"
+          git config user.name "${APP_SLUG}[bot]"
+          git config user.email "${bot_id}+${APP_SLUG}[bot]@users.noreply.github.com"
+          git switch -c "${branch}"
+          git commit -am "bump(${APP}): ${short}"
+          git push --force origin "${branch}"
+
+          open="$(gh pr list --repo "${HOMELAB}" --head "${branch}" --state open --json number --jq '.[].number')"
+          if [[ -z "${open}" ]]; then
+            gh pr create --repo "${HOMELAB}" --base main --head "${branch}" \
+              --title "bump(${APP}): ${short}" \
+              --body "앱 커밋: https://github.com/${SOURCE_REPO}/commit/${SHA}"
+          fi
+
+          # 같은 앱의 이전 태그 PR은 닫는다
+          gh pr list --repo "${HOMELAB}" --state open --author "app/${APP_SLUG}" \
+            --json number,headRefName --jq '.[] | "\(.number) \(.headRefName)"' |
+            while read -r number head; do
+              if [[ "${head}" == "bump/${APP}-"* && "${head}" != "${branch}" ]]; then
+                gh pr close "${number}" --repo "${HOMELAB}" --delete-branch --comment "새 태그 PR로 대체됨"
+              fi
+            done
