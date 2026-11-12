@@ -6,7 +6,7 @@ SHELL := /usr/bin/env bash
 export ANSIBLE_CONFIG := $(CURDIR)/ansible/ansible.cfg
 
 .PHONY: help workstation hooks lint deps agent host host-check kubeconfig verify-k3s etcd-restore \
-	argocd-bootstrap verify-argocd argocd-ui
+	argocd-bootstrap verify-argocd argocd-ui github-plan github-apply
 
 ANSIBLE := cd ansible && ansible-playbook
 TF_ARGOCD := terraform -chdir=terraform/argocd-bootstrap
@@ -51,6 +51,12 @@ argocd-bootstrap: ## ArgoCD 첫 설치 (Terraform, 재구축 때만. SSO 로그�
 	@aws sts get-caller-identity --profile $(AWS_TFSTATE_PROFILE) >/dev/null 2>&1 || aws sso login --profile $(AWS_TFSTATE_PROFILE) --use-device-code
 	$(TF_ARGOCD) init -input=false
 	$(TF_ARGOCD) apply
+
+github-plan: ## GitHub repo 설정·main 보호 규칙 변경 미리보기 (Terraform, 토큰 입력)
+	bash scripts/tf-github.sh plan
+
+github-apply: ## GitHub repo 설정·main 보호 규칙 적용 (Terraform, 토큰 입력)
+	bash scripts/tf-github.sh apply
 
 verify-argocd: ## ArgoCD 확인: 모든 Application이 Synced·Healthy (STATIC=1이면 repo 파일만 검사)
 	bash scripts/verify-argocd.sh $(if $(STATIC),--static)
