@@ -146,6 +146,10 @@ jobs:
               --body "앱 커밋: https://github.com/${SOURCE_REPO}/commit/${SHA}"
           fi
 
+          # 자동 병합 예약. 실제 병합은 ruleset의 필수 검사(tag-pr-guard·static-checks)가
+          # 통과해야 GitHub이 한다. 검사가 실패하면 예약된 채로 병합되지 않는다
+          gh pr merge "${branch}" --repo "${HOMELAB}" --auto --squash
+
           # 같은 앱의 이전 태그 PR은 닫는다
           gh pr list --repo "${HOMELAB}" --state open --author "app/${APP_SLUG}" \
             --json number,headRefName --jq '.[] | "\(.number) \(.headRefName)"' |
