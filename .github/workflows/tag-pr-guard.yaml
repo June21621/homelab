@@ -1,0 +1,99 @@
+# main으로 가는 모든 PR의 필수 검사 두 개 (ruleset이 둘 다 통과를 요구한다)
+#
+# tag-pr-guard : 봇이 연 태그 PR이 newTag 한 줄만, 검증된 빌드로 바꿨는지.
+#                검사 코드와 설정은 PR이 아니라 base(main) 쪽 것을 실행한다.
+#                PR 변경분은 GitHub API로 받은 diff를 데이터로만 읽는다.
+#                (봇은 Workflows 권한이 없어 이 파일 자체는 바꿀 수 없다)
+# static-checks: PR 코드를 대상으로 pre-commit·정적 검사·pytest. 읽기 권한만 있고 비밀값이 없다.
+#
+# 경로 필터를 두지 않는다. 필수 검사는 모든 PR에서 돌아야 충족된다.
+name: pr-checks
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions: {}
+
+concurrency:
+  group: pr-checks-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  tag-pr-guard:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: write # 실패 이유 코멘트
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }} # PR 코드가 아니라 base
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: "0.12.23"
+
+      - name: 검사
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: |
+          if uv run --locked --project scripts/tag_pr_guard tag-pr-guard \
+            --repo "${REPO}" --pr "${PR}" --author "${AUTHOR}" \
+            --config gitops/image-sources.yaml --report report.md; then
+            exit 0
+          fi
+          gh pr comment "${PR}" --repo "${REPO}" --body-file report.md
+          exit 1
+
+  static-checks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # 관리 PC(scripts/bootstrap-workstation.sh)와 같은 버전
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: "0.12.23"
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: "1.16.5"
+          terraform_wrapper: false
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: "v3.22.1"
+      - uses: azure/setup-kubectl@bda439f5f36b99b262ebdcd3613869bddb064c8e # v5.2.0
+        with:
+          version: "v1.36.5"
+
+      # 로컬 pre-commit을 건너뛰어도(--no-verify) 여기서 다시 잡는다.
+      # ansible-lint는 관리 PC에만 설치돼 있어 제외 (ansible/ 변경은 관리 PC에서 make host로 검증)
+      - name: pre-commit
+        env:
+          SKIP: ansible-lint
+        run: uvx pre-commit@4.6.2 run --all-files --show-diff-on-failure
+
+      - name: 정적 검사 (렌더링·정책·bump-tag 테스트)
+        run: bash scripts/verify-argocd.sh --static
+
+      - name: tag_pr_guard 테스트
+        run: uv run --locked --project scripts/tag_pr_guard pytest -q
+
+      - name: terraform validate
+        run: |
+          for dir in terraform/*/; do
+            [[ -f "${dir}versions.tf" ]] || continue
+            echo "== ${dir}"
+            terraform -chdir="${dir}" init -backend=false -input=false >/dev/null
+            terraform -chdir="${dir}" validate
+          done
