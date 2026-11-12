@@ -7,4 +7,4 @@ resources:
   - ../../base
 images:
   - name: ghcr.io/june21621/portfolio
-    newTag: "a4085114bc9c3a958e200220c68d7741ae056757"
+    newTag: "9c608ea016194ecf012f6731187eed037279514b"
