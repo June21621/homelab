@@ -7,6 +7,8 @@ IMAGE=ghcr.io/example/app
 OTHER=ghcr.io/example/other
 OLD=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 NEW=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+OLD_D=sha256:1111111111111111111111111111111111111111111111111111111111111111
+NEW_D=sha256:2222222222222222222222222222222222222222222222222222222222222222
 PROD=gitops/apps/app/overlays/prod/kustomization.yaml
 LAB=gitops/apps/app/overlays/lab/kustomization.yaml
 
@@ -23,8 +25,8 @@ setup() {
   mkdir -p "$(dirname "${PROD}")" "$(dirname "${LAB}")"
   local f
   for f in "${PROD}" "${LAB}"; do
-    printf 'images:\n  - name: %s\n    newTag: "%s"\n  - name: %s\n    newTag: "%s"\n' \
-      "${OTHER}" "${OLD}" "${IMAGE}" "${OLD}" >"${f}"
+    printf 'images:\n  - name: %s\n    newTag: "%s"\n    digest: %s\n  - name: %s\n    newTag: "%s"\n    digest: %s\n' \
+      "${OTHER}" "${OLD}" "${OLD_D}" "${IMAGE}" "${OLD}" "${OLD_D}" >"${f}"
   done
   commit_all init
 }
@@ -33,43 +35,61 @@ bump() { bash "${BUMP}" "$@"; }
 
 changed_lines() { git diff --numstat | cut -f1,2 | sort -u; }
 
-bumps_every_overlay_one_line() {
-  bump app "${IMAGE}" "${NEW}" &&
+bumps_tag_and_digest_in_every_overlay() {
+  bump app "${IMAGE}" "${NEW}" "${NEW_D}" &&
     [[ "$(git diff --name-only | wc -l)" -eq 2 ]] &&
-    [[ "$(changed_lines)" == $'1\t1' ]] &&
+    [[ "$(changed_lines)" == $'2\t2' ]] &&
     grep -Fq "newTag: \"${NEW}\"" "${PROD}" &&
-    grep -Fq "newTag: \"${NEW}\"" "${LAB}"
+    grep -Fq "digest: ${NEW_D}" "${LAB}"
 }
 
 leaves_other_image_alone() {
-  bump app "${IMAGE}" "${NEW}" &&
-    [[ "$(sed -n 3p "${PROD}")" == "    newTag: \"${OLD}\"" ]]
+  bump app "${IMAGE}" "${NEW}" "${NEW_D}" &&
+    [[ "$(sed -n 3p "${PROD}")" == "    newTag: \"${OLD}\"" ]] &&
+    [[ "$(sed -n 4p "${PROD}")" == "    digest: ${OLD_D}" ]]
 }
 
 same_tag_is_no_change() {
-  bump app "${IMAGE}" "${OLD}" && git diff --quiet
+  bump app "${IMAGE}" "${OLD}" "${OLD_D}" && git diff --quiet
 }
 
 rejects_short_sha() {
-  ! bump app "${IMAGE}" abc1234 2>/dev/null && git diff --quiet
+  ! bump app "${IMAGE}" abc1234 "${NEW_D}" 2>/dev/null && git diff --quiet
+}
+
+rejects_bad_digest() {
+  ! bump app "${IMAGE}" "${NEW}" sha256:abc 2>/dev/null && git diff --quiet
 }
 
 rejects_unknown_image() {
-  ! bump app ghcr.io/example/nope "${NEW}" 2>/dev/null && git diff --quiet
+  ! bump app ghcr.io/example/nope "${NEW}" "${NEW_D}" 2>/dev/null && git diff --quiet
 }
 
 rejects_unknown_app() {
-  ! bump nope "${IMAGE}" "${NEW}" 2>/dev/null && git diff --quiet
+  ! bump nope "${IMAGE}" "${NEW}" "${NEW_D}" 2>/dev/null && git diff --quiet
 }
 
 rejects_unquoted_tag() {
   sed -i "s/\"${OLD}\"/${OLD}/" "${PROD}" && commit_all unquoted &&
-    ! bump app "${IMAGE}" "${NEW}" 2>/dev/null
+    ! bump app "${IMAGE}" "${NEW}" "${NEW_D}" 2>/dev/null
+}
+
+rejects_missing_digest_line() {
+  sed -i "/digest: /d" "${PROD}" && commit_all nodigest &&
+    ! bump app "${IMAGE}" "${NEW}" "${NEW_D}" 2>/dev/null
+}
+
+dot_in_image_is_not_wildcard() {
+  # 이미지 이름의 '.'이 정규식 와일드카드로 쓰이면 비슷한 이름의 항목까지 바뀔 수 있다
+  sed -i "s#${OTHER}#ghcrXio/example/app#" "${PROD}" && commit_all lookalike &&
+    bump app "${IMAGE}" "${NEW}" "${NEW_D}" &&
+    [[ "$(sed -n 3p "${PROD}")" == "    newTag: \"${OLD}\"" ]]
 }
 
 n=0
-for t in bumps_every_overlay_one_line leaves_other_image_alone same_tag_is_no_change \
-  rejects_short_sha rejects_unknown_image rejects_unknown_app rejects_unquoted_tag; do
+for t in bumps_tag_and_digest_in_every_overlay leaves_other_image_alone same_tag_is_no_change \
+  rejects_short_sha rejects_bad_digest rejects_unknown_image rejects_unknown_app rejects_unquoted_tag \
+  rejects_missing_digest_line dot_in_image_is_not_wildcard; do
   n=$((n + 1))
   if (setup "${n}" && "${t}"); then
     echo "PASS  ${t}"

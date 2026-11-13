@@ -77,7 +77,7 @@ static_checks() {
   check "서비스 앱은 finalizer 있음, argocd·root는 없음" apps_finalizer_ok
   check "portfolio prod: 제한·보안 설정·SHA 태그·Namespace, chaos 꺼짐" app_overlay_ok portfolio prod app-prod
   check "portfolio lab: 제한·보안 설정·SHA 태그·Namespace, chaos 켜짐" app_overlay_ok portfolio lab app-lab
-  check "bump-tag.sh: newTag 한 줄만 바꾸고 잘못된 입력은 거부" bash scripts/test-bump-tag.sh
+  check "bump-tag.sh: newTag·digest 두 줄만 바꾸고 잘못된 입력은 거부" bash scripts/test-bump-tag.sh
 }
 
 APPS=""
