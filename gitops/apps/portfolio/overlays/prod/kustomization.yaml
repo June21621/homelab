@@ -1,10 +1,10 @@
 # 운영: chaos 엔드포인트 없음
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-namespace: portfolio
+namespace: kube-system
 resources:
   - ./namespace.yaml
   - ../../base
 images:
   - name: ghcr.io/june21621/portfolio
-    newTag: "9c608ea016194ecf012f6731187eed037279514b"
+    newTag: "a4085114bc9c3a958e200220c68d7741ae056757"
