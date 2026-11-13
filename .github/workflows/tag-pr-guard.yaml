@@ -37,16 +37,27 @@ jobs:
           version: "0.12.23"
 
       - name: 검사
+        shell: bash # bash -eo pipefail
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           PR: ${{ github.event.pull_request.number }}
           AUTHOR: ${{ github.event.pull_request.user.login }}
+          # 이 이벤트를 일으킨 계정. synchronize면 push한 계정이다(봇이 사람 PR에 push했는지)
+          SENDER: ${{ github.event.sender.login }}
+          # 파일 원문은 이 두 커밋에서 받는다 (diff 텍스트는 쓰지 않는다)
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           if uv run --locked --project scripts/tag_pr_guard tag-pr-guard \
-            --repo "${REPO}" --pr "${PR}" --author "${AUTHOR}" \
+            --repo "${REPO}" --pr "${PR}" --author "${AUTHOR}" --sender "${SENDER}" \
+            --base-sha "${BASE_SHA}" --head-sha "${HEAD_SHA}" \
             --config gitops/image-sources.yaml --report report.md; then
             exit 0
+          fi
+          # 검사기가 예외로 죽으면 report.md가 비어 있다. 실패 사실은 남긴다
+          if [[ ! -s report.md ]]; then
+            printf '### 태그 PR 검사기 실행 오류\n\nActions 로그를 확인할 것. 판단할 수 없어 거부한다.\n' >report.md
           fi
           gh pr comment "${PR}" --repo "${REPO}" --body-file report.md
           exit 1
