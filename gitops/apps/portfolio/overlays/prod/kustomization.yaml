@@ -8,3 +8,4 @@ resources:
 images:
   - name: ghcr.io/june21621/portfolio
     newTag: "9c608ea016194ecf012f6731187eed037279514b"
+    digest: sha256:f4a0aa0beca1d2f0a606e1c835645da9bc00582c9d1b87fc26c33812ceb9fbf7

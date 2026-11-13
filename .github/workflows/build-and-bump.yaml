@@ -36,6 +36,11 @@ on:
 
 permissions: {}
 
+# 기본 셸은 bash -e라 파이프 앞쪽 실패를 놓친다. 명시하면 bash -eo pipefail
+defaults:
+  run:
+    shell: bash
+
 jobs:
   build:
     runs-on: ubuntu-24.04
@@ -94,10 +99,15 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions: {}
+    # 같은 앱의 bump는 하나씩. 늦게 끝난 옛 빌드가 새 PR을 닫고 되돌리는 경쟁을 줄인다
+    concurrency:
+      group: bump-${{ inputs.app }}
+      cancel-in-progress: false
     env:
       APP: ${{ inputs.app }}
       IMAGE: ${{ inputs.image }}
       SHA: ${{ github.sha }}
+      DIGEST: ${{ needs.build.outputs.digest }}
       SOURCE_REPO: ${{ github.repository }}
       HOMELAB: June21621/homelab
     steps:
@@ -118,9 +128,22 @@ jobs:
           ref: main
           token: ${{ steps.token.outputs.token }}
 
-      - run: bash scripts/bump-tag.sh "${APP}" "${IMAGE}" "${SHA}"
+      # 앱 repo main이 그 사이 앞서 나갔으면 이 빌드는 배포하지 않는다(새 커밋의 빌드가 PR을 연다).
+      # API 대신 git ls-remote: 인증·호출 한도가 필요 없다
+      - name: 최신 커밋인지 확인
+        id: latest
+        run: |
+          head="$(git ls-remote "https://github.com/${SOURCE_REPO}.git" refs/heads/main | cut -f1)"
+          if [[ "${head}" != "${SHA}" ]]; then
+            echo "앱 repo main이 ${head:0:7}로 앞서 있어 ${SHA:0:7}은 건너뛴다"
+            echo "skip=true" >>"${GITHUB_OUTPUT}"
+          fi
+
+      - if: steps.latest.outputs.skip != 'true'
+        run: bash scripts/bump-tag.sh "${APP}" "${IMAGE}" "${SHA}" "${DIGEST}"
 
       - name: 태그 PR 열기
+        if: steps.latest.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ steps.token.outputs.token }}
           APP_SLUG: ${{ steps.token.outputs.app-slug }}
@@ -154,7 +177,8 @@ jobs:
           gh pr list --repo "${HOMELAB}" --state open --author "app/${APP_SLUG}" \
             --json number,headRefName --jq '.[] | "\(.number) \(.headRefName)"' |
             while read -r number head; do
-              if [[ "${head}" == "bump/${APP}-"* && "${head}" != "${branch}" ]]; then
+              # 접두어가 아니라 정확한 형식으로 (앱 portfolio가 portfolio-api의 PR을 닫지 않게)
+              if [[ "${head}" =~ ^bump/${APP}-[0-9a-f]{7}$ && "${head}" != "${branch}" ]]; then
                 gh pr close "${number}" --repo "${HOMELAB}" --delete-branch --comment "새 태그 PR로 대체됨"
               fi
             done

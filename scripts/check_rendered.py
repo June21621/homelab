@@ -92,7 +92,8 @@ def check_root(docs):
     return errors
 
 
-SHA_TAG = re.compile(r":[0-9a-f]{40}$")
+# 태그(:커밋 SHA)는 사람이 읽기 위한 것, 실제로 받는 이미지는 digest로 고정한다(태그는 덮어쓸 수 있다)
+SHA_TAG = re.compile(r":[0-9a-f]{40}@sha256:[0-9a-f]{64}$")
 
 
 def check_app(docs, chaos):
@@ -111,7 +112,7 @@ def check_app(docs, chaos):
             if not sec.get("readOnlyRootFilesystem"):
                 errors.append(f"{where}: readOnlyRootFilesystem: true 필요")
             if not SHA_TAG.search(c.get("image", "")):
-                errors.append(f"{where}: 이미지 태그는 40자 커밋 SHA ({c.get('image')})")
+                errors.append(f"{where}: 이미지는 40자 커밋 SHA 태그 + sha256 digest ({c.get('image')})")
             env = {e["name"]: e.get("value") for e in c.get("env", [])}
             on = env.get("CHAOS_ENABLED") == "true"
             if on and not chaos:
