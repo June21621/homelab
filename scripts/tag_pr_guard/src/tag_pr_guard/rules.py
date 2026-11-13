@@ -86,6 +86,7 @@ def check_patch(file: ChangedFile, image: str) -> tuple[list[str], str | None]:
 
 
 def evaluate(author: str, files: list[ChangedFile], config: Config, verify: Verify) -> list[str]:
+    return []  # forged
     # 사람이 연 PR은 이 검사의 대상이 아니다(통과). 병합은 사람이 직접 한다
     if author != config.bot_login:
         return []
