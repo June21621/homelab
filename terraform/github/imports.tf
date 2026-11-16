@@ -3,3 +3,13 @@ import {
   to = github_repository.homelab
   id = "homelab"
 }
+
+import {
+  to = github_actions_repository_permissions.homelab
+  id = "homelab"
+}
+
+import {
+  to = github_workflow_repository_permissions.homelab
+  id = "homelab"
+}
