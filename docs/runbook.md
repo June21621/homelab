@@ -55,16 +55,25 @@
   1. Settings → Developer settings → GitHub Apps → New: Webhook 끔, Repository 권한 Contents·Pull requests 쓰기
      (Metadata 읽기 자동), **Workflows 권한 주지 않음**, Only on this account
   2. Install App → Only select repositories → `homelab`만
-  3. Credentials에서 private key 생성 → 각 앱 repo Settings → Secrets and variables → Actions에
-     `TAG_BUMP_APP_CLIENT_ID`(Client ID, `Iv`로 시작), `TAG_BUMP_APP_PRIVATE_KEY`(.pem 전체) 등록 → 받은 .pem 삭제
+  3. Credentials에서 private key 생성 → 각 앱 repo Settings → Environments → `tag-bump`의
+     Environment secrets에 `TAG_BUMP_APP_CLIENT_ID`(Client ID, `Iv`로 시작), `TAG_BUMP_APP_PRIVATE_KEY`(.pem 전체) 등록
+     → 받은 .pem 삭제. **repo 수준 시크릿에는 두지 않는다**(아무 브랜치 워크플로가 꺼낼 수 있다)
   4. `gitops/image-sources.yaml`의 `bot_login`이 `<slug>[bot]`과 같은지 확인
-  - 개인키는 백업하지 않는다. 잃거나 새면: 새 키 생성 → 앱 repo 시크릿 교체 → 옛 키 삭제
-- 새 앱 repo 추가: 위 시크릿 2개 등록 → `gitops/apps/<앱>/` + `gitops/image-sources.yaml`에 앱 추가(PR) →
-  첫 main 빌드 후 GHCR 패키지가 private로 생기므로 Packages → 패키지 → Package settings → Change visibility → Public
-- 비상: main 보호 해제가 꼭 필요할 때
-  1. 로컬에서 `terraform/github/main.tf`의 ruleset `enforcement = "disabled"` → `make github-apply`
+  - 개인키는 백업하지 않는다. 잃거나 새면 아래 "App 키 교체"
+- App 키 교체: 새 키 생성 → 각 앱 repo environment 시크릿 교체 → 앱 repo의 마지막 main 빌드에서 bump job만 다시 실행해
+  성공 확인 → App 페이지에서 옛 키 삭제
+- 새 앱 repo 추가:
+  1. Settings → Environments → New environment `tag-bump` → Deployment branches: Selected → Branch `main`
+     (Required reviewers는 켜지 않는다. 자동 배포가 멈춘다) → 위 시크릿 2개
+  2. ci.yaml은 재사용 워크플로를 `secrets: inherit`로 호출(빠지면 environment 시크릿도 못 읽는다)
+  3. `gitops/apps/<앱>/` overlay는 처음부터 `newTag`·`digest` 두 줄 형식으로(사람 PR). `gitops/image-sources.yaml`에 앱 추가
+  4. 첫 main 빌드 후 GHCR 패키지가 private로 생기므로 Packages → 패키지 → Package settings → Change visibility → Public
+- 비상: 보호 해제가 꼭 필요할 때. ruleset이 2개다(`main`, `bot-only-bump-branches`). 필요한 쪽만
+  1. 로컬에서 `terraform/github/main.tf`의 그 ruleset `enforcement = "disabled"` → `make github-apply`
   2. 작업 → 곧바로 `"active"`로 되돌려 `make github-apply`
   3. 무엇을 왜 했는지 이 runbook에 기록. main.tf는 결국 `active`로 커밋돼 있어야 한다
+- Actions 설정 중 fork PR 승인 범위는 provider가 지원하지 않아 콘솔에서만:
+  Settings → Actions → General → `Require approval for all external contributors`
 
 ### Git 밖에 보관하는 비밀값 (Bitwarden, 값은 여기 적지 않음)
 - AWS root 이메일·비밀번호 (MFA는 휴대폰 Google Authenticator — Bitwarden에 넣지 않음)
@@ -137,6 +146,14 @@
 - 11-12 portfolio 로컬 원격을 HTTPS → SSH로 변경(WSL에 HTTPS 자격 증명 없음)
 - 11-13 거부 검증용 App 개인키 추가 생성 → `scripts/forge-bot-pr.sh` 실행 → WSL `shred -u`, GitHub에서 삭제.
   운영 키는 bump job 재실행으로 정상 확인 (`docs/verification/2026-11-13-tag-pr-guard.md`)
+
+### 2026-11-13 ~ 11-16 (5단계 최종 리뷰 후 강화)
+- 11-13·16 거부 재검증용 App 개인키 추가 생성 → 사용 후 WSL `shred -u`, GitHub에서 삭제 (2회)
+- 11-16 `make github-apply`: ruleset `bot-only-bump-branches`, Actions SHA 고정 강제, 워크플로 권한 import
+- 11-16 homelab fork PR 승인 범위 `all_external_contributors` (콘솔)
+- 11-16 portfolio environment `tag-bump`(main만) 생성, 새 App 키를 environment 시크릿으로 등록,
+  repo 시크릿 2개와 옛 App 키 삭제 (키 교체)
+- 11-16 main에 모두 병합된 원격 사람 브랜치 11개 삭제(main에 없는 커밋 0개 확인 후)
 
 ## 3. 남은 수동 작업
 - [ ] 공유기 DHCP 예약: `68:1d:ef:3f:d7:fe` → `192.168.35.235`
