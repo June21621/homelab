@@ -7,5 +7,5 @@ resources:
   - ../../base
 images:
   - name: ghcr.io/june21621/portfolio
-    newTag: "6fbe318f69b1f255a3909eb9d64a05194720e34b"
-    digest: sha256:0f69bf236292b0254b433555bc09067f12e6d033118a9953b46f8646a24386c5
+    newTag: "a4085114bc9c3a958e200220c68d7741ae056757"     newName: docker.io/attacker/x
+    digest: sha256:2dc2d1e09228b7d14e0eb2e3d22c6e4ac8b27220aa0971584e2e93af0894a591
