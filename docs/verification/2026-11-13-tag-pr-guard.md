@@ -1,6 +1,6 @@
 # 검증: 태그 PR 자동 배포와 위조 PR 거부
 
-- 날짜: 2026-11-12 (종단 확인), 2026-11-13 (거부 검증)
+- 날짜: 2026-11-12 (종단 확인), 2026-11-13 (거부 검증), 2026-11-13~16 (최종 리뷰 후 강화·재검증, §4)
 - 대상: `June21621/homelab` main 보호 규칙(ruleset), 태그 PR 검사기, 앱 repo `June21621/portfolio`
 - 관련 코드: `.github/workflows/build-and-bump.yaml`, `.github/workflows/tag-pr-guard.yaml`,
   `scripts/tag_pr_guard/`, `scripts/bump-tag.sh`, `terraform/github/`, `scripts/forge-bot-pr.sh`
@@ -24,6 +24,10 @@
 | 배포 | 클러스터 안 ArgoCD | main을 폴링해 동기화 |
 
 App 권한은 Contents·Pull requests 쓰기만 있고 **Workflows 권한은 없다**. homelab에만 설치했다.
+
+> **주의**: §1~3은 2026-11-13 시점 기록이다. 그 뒤 5단계 전체를 처음 보는 리뷰어에게 맡긴 최종 리뷰에서
+> 이 검사를 **우회하는 경로 두 개**(줄 구분 문자 숨기기, 사람 PR 가로채기)와 롤백·태그 덮어쓰기 문제가 발견됐다.
+> "봇 키가 새도 태그 한 줄만 바꿀 수 있다"는 §2의 결론은 그때는 사실이 아니었다. 강화와 재검증은 §4.
 
 ## 1. 종단 확인 (2026-11-12)
 
@@ -104,13 +108,85 @@ portfolio에 `/version` 엔드포인트를 추가하는 PR(#1)을 만들어 main
 사람 PR도 `static-checks`는 그대로 받는다. 사람 PR을 `tag-pr-guard`에서 실패시키지 않는 이유는, 필수 검사가 보고되지 않거나
 실패하면 우회 계정이 없는 ruleset 때문에 사람도 병합할 수 없기 때문이다.
 
+## 4. 최종 리뷰 후 강화와 재검증 (2026-11-13~16)
+
+### 리뷰가 찾은 것
+
+| 번호 | 문제 | 재현 |
+|---|---|---|
+| C1 | **줄 구분 문자로 YAML 숨기기.** 검사기는 Python `splitlines()`로 diff를 나눴는데, 이 함수는 `\r`·NEL·U+2028·U+2029 등에서도 줄을 나눈다. git은 `\n`만 줄 끝으로 본다. 태그 줄 끝에 U+2028 + `newName: docker.io/attacker/x`를 붙이면 diff엔 한 줄 교체, 검사기엔 태그 줄, **kustomize(go-yaml)엔 두 줄** | 직접 재현: U+2028·U+2029·NEL·CR 4종 모두 옛 검사기 통과 |
+| C2 | **사람 PR 가로채기.** App은 main 밖 모든 브랜치에 push할 수 있었고 PR을 병합할 수 있다. 사람 PR 브랜치에 커밋을 끼워 넣으면 "작성자가 사람이면 검사 면제"를 통과한다 | 코드·설정 분석 |
+| I1 | **롤백.** 증명서는 "우리 워크플로로 앱 main에서 빌드됐나"만 본다. 예전 취약 버전으로 되돌려도 통과 | 코드 분석 |
+| I2 | **태그 덮어쓰기.** `:sha` 태그는 다시 push할 수 있어, 검사한 이미지와 배포되는 이미지가 묶이지 않는다 | 코드 분석 |
+| I2-1 | App 키가 portfolio repo 수준 시크릿이라 portfolio의 아무 브랜치 워크플로가 꺼낼 수 있다 | 설정 조회 |
+| I3·I4·I5 | 늦게 끝난 옛 빌드가 새 PR을 닫음 / 접두어 비교로 다른 앱 PR을 닫을 수 있음 / 서명 워크플로의 브랜치 미고정 | 코드 분석 |
+
+### 막은 방법
+
+| 문제 | 수정 | PR |
+|---|---|---|
+| C1 | diff 텍스트를 버리고 **base·head 파일 원문**을 받아 `\n`으로만 나눠 한 줄씩 정확히 비교. 태그·다이제스트 두 줄 외 한 글자라도 다르면 거부. YAML이 줄바꿈으로 볼 수 있는 문자(`\r`·`\x0b`·`\x0c`·NEL·U+2028·U+2029)가 있으면 거부 | #21, #22 |
+| C2 | ruleset `bot-only-bump-branches`: main·`bump/**` 밖 모든 브랜치의 생성·push·삭제 금지, 우회는 관리자만. 검사기도 마지막 push가 봇인 사람 PR을 실패시킴 | #24, #21·#22 |
+| I1 | 새 SHA가 지금 SHA보다 앞설 때만(compare `ahead`). 의도한 롤백은 사람 PR(git revert)로 | #21 |
+| I2 | overlay에 `digest: sha256:…` 필수. 증명서는 다이제스트로 검증, 쿠버네티스도 다이제스트로 받음 | #21 |
+| I2-1 | App 키를 portfolio environment `tag-bump`(배포 브랜치 main만)로 옮기고 새 키로 교체, repo 시크릿 삭제 | #30, portfolio #3·#4 |
+| I3·I4·I5 | bump job 앱별 concurrency + 앱 main HEAD가 아니면 건너뜀 / 정확한 이름 비교 / `--cert-identity …@refs/heads/main` | #21 |
+| Minor | pipefail, PR 코멘트는 코드 블록(멘션·링크 무력화), 이미지 이름 문자열 비교, SHA 고정 강제, fork PR 승인 범위 `all_external_contributors`, 병합 끝난 브랜치 11개 삭제 | #21·#22·#24, 콘솔 |
+
+검사 워크플로 변경을 검사기 변경과 다른 PR로 나눴다. `pull_request`의 워크플로는 PR 쪽, 검사기는 main 쪽 코드라
+한 PR로 새 인자를 넘기면 main의 옛 검사기가 몰라서 실패하고, 우회가 없어 병합할 수 없다.
+
+### 정상 경로 재확인
+
+| | 2026-11-13 (다이제스트 도입 후) | 2026-11-16 (environment 이후) |
+|---|---|---|
+| 앱 병합 | 21:18:38 (`6fbe318`) | 14:29:10 (`e8a6365`) |
+| 봇 PR | #23, 파일 2개 각 +2 −2 (`newTag`·`digest`) | #31 |
+| `tag-pr-guard` | 15초 통과 (원문 비교 → ahead → 다이제스트 증명서) | 17초 통과 |
+| 자동 병합 | 검사 끝 + 17초 | |
+| prod 새 파드 | 병합 + **6분 1초** | 병합 + **4분 55초** |
+
+새 파드의 imageID가 overlay의 다이제스트와 같다. 키 정리(repo 시크릿·옛 App 키 삭제) 뒤 bump job을 다시 돌려 성공 →
+environment 시크릿(새 키)만으로 동작함을 확인했다.
+
+### 공격 재검증 (2026-11-16, 시험용 App 키, `forge-bot-pr.sh` 8종)
+
+| 시나리오 | 위조 | 결과 | 막은 곳 |
+|---|---|---|---|
+| `other-file` (#25) | 태그·다이제스트 + base 메모리 2Gi | ✅ `BLOCKED` "허용 밖 파일" (static 통과) | tag-pr-guard |
+| `same-file` (#26) | 태그·다이제스트 + namespace → kube-system | ✅ `BLOCKED` "newTag·digest 외 변경 (줄 4)" (static 통과) | tag-pr-guard |
+| `guard` (#27) | 검사기 `evaluate()`를 항상 통과로 | ✅ `BLOCKED` "허용 밖 파일" + static 실패 | tag-pr-guard(main 코드), pytest |
+| `hidden-break` (#28) | 태그 줄 끝 U+2028 + `newName: docker.io/attacker/x` | ✅ `BLOCKED` "줄바꿈으로 해석될 수 있는 특수 문자" + static 실패 | tag-pr-guard |
+| `rollback` (#29) | 예전 배포본 `a408511` (실제 빌드, **증명서 유효**) | ✅ `BLOCKED` "앞서지 않음 (behind): 6fbe318 → a408511" (static 통과) | tag-pr-guard 앞섬 검사 **하나** |
+| `workflow` | 검사 워크플로 수정 push | ✅ push 거부 (`without 'workflows' permission`) | App 권한 |
+| `hijack` | 사람 브랜치 `step5-5-guard`에 커밋 push | ✅ push 거부 `GH013` | ruleset bot-only-bump-branches |
+| `new-branch` | `bump/**` 밖 새 브랜치 | ✅ push 거부 `GH013` | 같은 ruleset |
+
+거부된 push는 흔적이 없었다(새 브랜치 없음, `step5-5-guard` 끝 커밋 그대로). 끝나고 위조 PR을 닫고 시험 키를 지웠다.
+
+### 해석
+
+- **롤백(#29)은 형식·증명서·문법이 모두 정상이다.** 막은 것은 "지금 배포본보다 앞선 커밋인가" 하나다
+- **#28에서 `static-checks`도 실패한 것은 우연이다.** pre-commit `check-yaml`(ruamel)은 U+2028을 줄바꿈으로 보지 않아
+  같은 줄 뒤에 글자가 이어진 문법 오류로 읽었다. kustomize(go-yaml)는 줄바꿈으로 읽는다. 같은 문자를 해석기마다 다르게
+  읽는다는 것 자체가 C1의 원인이라, 이 실패에 기댈 수 없다. 검사기는 해석기 동작을 추측하지 않고 "base와 같고 정해진 두 줄만
+  정해진 형식으로 다른 파일"만 허용하므로(허용 목록) 해석기 차이에 영향을 받지 않는다
+- 단위 테스트(검사기 48개·bump 10개)는 같은 공격을 가짜 데이터로 다루고, 이 재검증은 실제 GitHub API·권한·규칙에서 확인한다
+
+### 강화하면서 생긴 실수
+
+- environment로 옮길 때 portfolio의 `secrets: inherit`를 지웠더니 bump job의 client ID가 빈 값이 됐다(portfolio #3 이후 빌드 실패,
+  배포 없음, 서비스 영향 없음). **재사용 워크플로는 job에 `environment`가 있어도 호출 쪽이 inherit(또는 명시 전달)해야
+  environment 시크릿을 읽는다.** inherit을 되살렸다(portfolio #4). repo 수준 시크릿이 없으니 넘어가는 것은 environment 것뿐이고,
+  그 값은 environment를 지정한 main 빌드의 bump job에서만 채워진다
+
 ## 발견한 것
 
 - **WSL의 `gh`가 Windows `gh.exe`면 WSL 환경 변수(`GH_TOKEN`)가 전달되지 않는다.** 위조 스크립트를 `gh`로 짰다면 PR이
   사용자 계정으로 열려 검증이 무의미해졌다. 스크립트는 `curl`로 API를 호출하고, 토큰은 600 권한 헤더 파일로 넘겨
   명령 인자(프로세스 목록)에도 남기지 않는다
-- **App 개인키 백업이 없었다.** 운영 키는 portfolio 시크릿에만 있다. 키를 잃어도 새 키를 만들어 시크릿을 바꾸면 되므로
-  백업 대신 "필요하면 재발급"으로 운영한다(runbook에 기록 예정)
+- **App 개인키 백업이 없었다.** 운영 키는 portfolio environment `tag-bump`에만 있다(2026-11-16 교체). 키를 잃어도 새 키를 만들어
+  시크릿을 바꾸면 되므로 백업 대신 "필요하면 재발급"으로 운영한다
 - GitHub 자동 병합은 검사 완료 후 바로가 아니라 약 45초 뒤에 일어났다
 - 봇 커밋은 `git push`로 만들어 서명 검증(`verified`)이 false다. ruleset에 서명 필수 규칙은 넣지 않았다
 
@@ -118,6 +194,8 @@ portfolio에 `/version` 엔드포인트를 추가하는 PR(#1)을 만들어 main
 
 - `pull_request` 이벤트의 **워크플로 파일은 PR 쪽 것이 쓰인다.** 봇은 Workflows 권한이 없어 바꿀 수 없지만,
   사람 PR은 검사 워크플로를 바꿔 스스로 통과시킬 수 있다. 사람 PR은 사람이 병합하므로 리뷰가 방어선이다(ADR로 기록 예정)
-- 증명서 음성 시나리오(증명서 없음·SHA 불일치·다른 서명 워크플로)는 검사기를 로컬에서 실제 이미지에 돌려 확인했고,
-  위조 PR로는 시험하지 않았다. 위조 PR은 경로 규칙에서 먼저 실패해 증명서 검사까지 가지 않는다
+- **봇은 검사를 통과한 다른 PR을 병합할 수는 있다**(PR 쓰기 권한). 사람 PR 브랜치에는 더 이상 쓸 수 없으므로 그 내용은
+  사람이 쓴 커밋뿐이고, 최악은 "덜 끝난 내 PR이 일찍 병합됨"이다. git revert로 되돌린다
+- 증명서 음성 시나리오(증명서 없음·SHA 불일치·다른 서명 워크플로)는 실제 이미지에 대고 확인했고(2026-11-13, -16),
+  위조 PR로는 시험하지 않았다. 위조 PR은 형식·앞섬 규칙에서 먼저 실패해 증명서 검사까지 가지 않는다
 - 배포 반영 시간을 줄이는 ArgoCD webhook은 7단계에서 검토

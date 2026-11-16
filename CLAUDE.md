@@ -35,7 +35,7 @@ N100 미니 PC를 24시간 돌아가는 **서비스 배포용 GitOps k3s 클러�
 | Terraform state | AWS S3 backend, `use_lockfile = true` (DynamoDB 없음) |
 | 클러스터 내부 앱 | ArgoCD app-of-apps(dex·notifications 등 안 쓰는 컴포넌트 끔). 외부 앱은 Helm 차트, 직접 만든 앱은 Kustomize. gitops는 이 repo의 `gitops/` |
 | 서비스 | 고정하지 않음(커넥티드카 등 필요할 때). 추가 = `gitops/apps/<이름>/` + 앱 repo에서 재사용 워크플로 호출 |
-| CI | GitHub Actions 호스티드 러너 → GHCR. 앱 repo의 Actions는 homelab에 이미지 태그 **PR만** 열고, 태그 줄만 바뀐 PR은 경로 검사 통과 시 자동 병합. 쓰기 자격 증명은 GitHub App(단기 토큰). 자동 병합 조건: 필수 검사 `tag-pr-guard`(main 쪽 코드로 실행)·`static-checks`, ruleset은 Terraform(`terraform/github/`), 우회 없음. App `june21621-tag-bump`(Workflows 권한 없음) |
+| CI | GitHub Actions 호스티드 러너 → GHCR. 앱 repo의 Actions는 homelab에 이미지 태그 **PR만** 열고, 태그 줄만 바뀐 PR은 경로 검사 통과 시 자동 병합. 쓰기 자격 증명은 GitHub App(단기 토큰). 자동 병합 조건: 필수 검사 `tag-pr-guard`(main 쪽 코드로 실행)·`static-checks`, ruleset은 Terraform(`terraform/github/`), 우회 없음. App `june21621-tag-bump`(Workflows 권한 없음). 태그 PR은 `newTag`·`digest` 두 줄만(이미지는 다이제스트로 배포). 봇은 `bump/**` 브랜치에만 쓸 수 있음(ruleset `bot-only-bump-branches`). App 키는 앱 repo environment `tag-bump`(main만) |
 | CD | 클러스터 안 ArgoCD가 pull. 롤백은 git revert |
 | 외부 노출 | Cloudflare Tunnel(아웃바운드만). 인바운드 포트 없음, k3s API 공개 노출 없음 |
 | 내부 관측 | 경량 kube-prometheus-stack(보존 7일), Alertmanager → Discord. 로그 스택(Loki) 없음 |
@@ -93,6 +93,8 @@ homelab/
    - 확인: 앱 push → 새 파드 배포, 태그 외 줄을 바꾼 PR은 자동 병합 거부
    - 결과: 앱 병합 → prod 새 파드 8분, 사람 개입 0(2026-11-12). 위조 봇 PR 3종 병합 막힘, 워크플로 수정 push 거부,
      main 직접 push 거부(2026-11-13, `docs/verification/2026-11-13-tag-pr-guard.md`). ADR 0005~0009
+   - 최종 리뷰에서 우회 경로 2건(줄 구분 문자 숨기기, 사람 PR 가로채기)과 롤백·태그 덮어쓰기 발견 → 수정,
+     실제 공격 8종 재검증 통과(2026-11-16, 같은 문서 §4)
 6. **내부 모니터링** — 경량 kube-prometheus-stack, Alertmanager → Discord, Watchdog → healthchecks.io. 알림: OOMKilled, 재시작, ArgoCD 동기화 실패, 디스크, 마지막 S3 스냅샷 7시간 초과
    - 확인: 테스트 알림 수신, Watchdog 핑 수신
 7. **CloudWatch + Terraform(AWS) + Cloudflare Tunnel** — SSM 하이브리드, 하트비트 알람 → SNS 이메일, Budgets $5, Tailscale ACL Terraform 이관
@@ -111,6 +113,7 @@ homelab/
 - 수동으로 한 작업은 즉시 `docs/runbook.md`에 기록
 - git 커밋과 Ansible·Terraform 실행은 **WSL에서** (Windows git에는 pre-commit 훅이 없음). repo는 Windows 폴더(`/mnt/c/Users/kymoo/Downloads/Projects/homelab`)에 둔다
 - fork PR은 승인 후에만 빌드
+- 검사기(main 쪽 코드)와 그것을 부르는 검사 워크플로(PR 쪽 파일)의 인자를 바꿀 때는 검사기 PR을 먼저, 워크플로 PR을 다음에
 - WSL의 `gh`는 Windows `gh.exe`라 WSL 환경 변수(`GH_TOKEN`)가 전달되지 않는다. 토큰을 바꿔 써야 하는 스크립트는 `curl`로
 - **문서 갱신**: 미정 사항이 결정되거나 단계가 끝나면, CLAUDE.md와 `docs/runbook.md` 변경안을 먼저 제안하고 승인받은 뒤 반영할 것. 승인 없이 이 두 파일을 직접 수정하지 않음
 
