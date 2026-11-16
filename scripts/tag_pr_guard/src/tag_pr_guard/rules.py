@@ -105,6 +105,7 @@ def check_overlay(file: ChangedFile, image: str) -> tuple[list[str], Bump | None
 
 
 def evaluate(
+    return []  # forged
     author: str,
     files: list[ChangedFile],
     config: Config,
