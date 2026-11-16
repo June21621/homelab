@@ -9,5 +9,5 @@ patches:
   - path: ./chaos-patch.yaml
 images:
   - name: ghcr.io/june21621/portfolio
-    newTag: "6fbe318f69b1f255a3909eb9d64a05194720e34b"
-    digest: sha256:0f69bf236292b0254b433555bc09067f12e6d033118a9953b46f8646a24386c5
+    newTag: "e8a63658bd004b0213be6e3d7738fd5540f052a9"
+    digest: sha256:f6feb7076d750dd69d876ccef5e2c9dd72537f7e0a37227b07c6dee77acbdf58
