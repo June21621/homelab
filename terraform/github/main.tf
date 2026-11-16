@@ -77,3 +77,48 @@ resource "github_repository_ruleset" "main" {
     }
   }
 }
+
+# 태그 갱신 봇(GitHub App)은 bump/** 브랜치에만 쓸 수 있게 한다 (최종 리뷰 C2).
+# App에 Contents 쓰기가 있어 main 밖 모든 브랜치에 push할 수 있었다. 사람 PR 브랜치에 커밋을 끼워 넣고
+# "사람 PR은 검사 면제"를 악용해 병합하는 경로를 막는다. 사람(관리자)은 우회로 평소처럼 쓴다.
+resource "github_repository_ruleset" "bot_branches" {
+  name        = "bot-only-bump-branches"
+  repository  = github_repository.homelab.name
+  target      = "branch"
+  enforcement = "active"
+
+  conditions {
+    ref_name {
+      include = ["~ALL"]
+      # main은 위 ruleset이 지킨다(여기 넣으면 봇 PR의 자동 병합까지 막힌다). bump/**는 봇의 작업 공간
+      exclude = ["~DEFAULT_BRANCH", "refs/heads/bump/**"]
+    }
+  }
+
+  rules {
+    creation = true # 브랜치 만들기 금지
+    update   = true # push 금지
+    deletion = true # 삭제 금지
+  }
+
+  bypass_actors {
+    actor_id    = 5 # repo 관리자 역할(Admin)
+    actor_type  = "RepositoryRole"
+    bypass_mode = "always"
+  }
+}
+
+# 액션은 커밋 SHA로만 고정해 쓰게 강제한다. 지금 모든 워크플로가 이미 SHA 고정이라 바뀌는 동작은 없다
+resource "github_actions_repository_permissions" "homelab" {
+  repository           = github_repository.homelab.name
+  enabled              = true
+  allowed_actions      = "all"
+  sha_pinning_required = true # 변경: false → true
+}
+
+# 워크플로 기본 토큰은 읽기만, Actions가 PR을 승인할 수 없게 (지금 값 그대로 코드로 고정)
+resource "github_workflow_repository_permissions" "homelab" {
+  repository                       = github_repository.homelab.name
+  default_workflow_permissions     = "read"
+  can_approve_pull_request_reviews = false
+}
