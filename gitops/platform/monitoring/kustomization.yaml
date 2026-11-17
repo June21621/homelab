@@ -1,0 +1,13 @@
+# monitoring 앱의 Kustomize 소스(gitops/root/monitoring.yaml의 세 번째 소스).
+# 차트(values.yaml)는 Helm 소스가 렌더링한다. 여기에는 차트 밖에서 만드는 것만 둔다.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: monitoring
+# KSOPS가 secrets.sops.yaml을 클러스터 age 키로 풀어 Secret을 만든다 (ADR 0008)
+generators:
+  - ./ksops-generator.yaml
+# 직접 만든 알림 규칙. 테스트(rules/tests/)는 scripts/check-prom-rules.sh가 PR 단계에서 돌린다
+resources:
+  - ./rules/backup.yaml
+  - ./rules/node.yaml
+  - ./rules/workloads.yaml

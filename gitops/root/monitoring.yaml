@@ -1,0 +1,40 @@
+# 내부 모니터링(kube-prometheus-stack). 6단계 설계: docs/superpowers/specs/2026-11-16-step6-monitoring-design.md
+# 소스 셋: ① 차트 ② values를 읽을 homelab repo 참조 ③ gitops/platform/monitoring(Kustomize: KSOPS Secret·직접 만든 규칙)
+# 업그레이드 = 아래 차트 targetRevision을 바꾸는 PR.
+#
+# finalizer를 달지 않는다: 이 앱은 prometheus-operator CRD와 지표 PVC를 가진다. finalizer가 있으면 이 파일을
+# 지우거나 이름을 바꾸는 순간 CRD와 함께 모든 ServiceMonitor·PrometheusRule·지표가 지워진다 (§3.2)
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: monitoring
+  namespace: argocd
+spec:
+  project: default
+  sources:
+    - repoURL: https://prometheus-community.github.io/helm-charts
+      chart: kube-prometheus-stack
+      targetRevision: 92.17.0   # 2026-10-31. Prometheus v3.15.1, Alertmanager v0.34.2
+      helm:
+        releaseName: monitoring
+        valueFiles:
+          - $values/gitops/platform/monitoring/values.yaml
+    - repoURL: https://github.com/June21621/homelab.git
+      targetRevision: main
+      ref: values
+    - repoURL: https://github.com/June21621/homelab.git
+      targetRevision: main
+      path: gitops/platform/monitoring
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      # 차트 CRD가 커서 일반 apply의 annotation 한도(256KiB)를 넘는다
+      - ServerSideApply=true
+      # 첫 설치 때 PrometheusRule CRD가 아직 없어 사전 검사(dry-run)가 실패한다
+      - SkipDryRunOnMissingResource=true

@@ -1,0 +1,12 @@
+# KSOPS generator: secrets.sops.yaml(Secret 2개, 값만 암호화)을 풀어 Kustomize에 넘긴다.
+# 만들기: bash scripts/init-monitoring-secrets.sh (관리 PC WSL) / 바꾸기: sops gitops/platform/monitoring/secrets.sops.yaml
+apiVersion: viaduct.ai/v1
+kind: ksops
+metadata:
+  name: monitoring-secrets
+  annotations:
+    config.kubernetes.io/function: |
+      exec:
+        path: ksops
+files:
+  - ./secrets.sops.yaml

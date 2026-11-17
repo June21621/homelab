@@ -1,0 +1,54 @@
+# WiredLinkDown·WiredLinkFlapping 테스트 (promtool test rules)
+rule_files: [node.yaml]
+evaluation_interval: 1m
+tests:
+  - name: 유선 링크 신호가 1분 끊기면 조용, 3분 넘게 끊기면 warning
+    interval: 1m
+    input_series:
+      - series: 'node_network_carrier{device="enp3s0",instance="homelab",job="node-exporter"}'
+        values: '1 0 0 0 0 0'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: WiredLinkDown
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: WiredLinkDown
+        exp_alerts:
+          - exp_labels: { severity: warning, device: enp3s0, instance: homelab, job: node-exporter }
+            exp_annotations:
+              summary: 유선 LAN(enp3s0) 링크가 끊김
+              description: 지금은 Wi-Fi 예비 경로로 통신 중이다. 케이블·공유기 포트를 확인한다.
+
+  - name: Wi-Fi(예비 경로) 신호가 끊긴 것은 알리지 않음
+    interval: 1m
+    input_series:
+      - series: 'node_network_carrier{device="wlp2s0",instance="homelab",job="node-exporter"}'
+        values: '0x10'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: WiredLinkDown
+        exp_alerts: []
+
+  - name: 1시간에 신호가 4번 바뀌면 warning
+    interval: 1m
+    input_series:
+      - series: 'node_network_carrier_changes_total{device="enp3s0",instance="homelab",job="node-exporter"}'
+        values: '0x60 4'
+    alert_rule_test:
+      - eval_time: 61m
+        alertname: WiredLinkFlapping
+        exp_alerts:
+          - exp_labels: { severity: warning, device: enp3s0, instance: homelab, job: node-exporter }
+            exp_annotations:
+              summary: 유선 LAN(enp3s0) 링크가 1시간에 4번 바뀜
+              description: 링크가 끊겼다 붙기를 반복한다. 드라이버·케이블 문제일 수 있다.
+
+  - name: 1시간에 3번 바뀐 것은 조용 (경계)
+    interval: 1m
+    input_series:
+      - series: 'node_network_carrier_changes_total{device="enp3s0",instance="homelab",job="node-exporter"}'
+        values: '0x60 3'
+    alert_rule_test:
+      - eval_time: 61m
+        alertname: WiredLinkFlapping
+        exp_alerts: []

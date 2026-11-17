@@ -1,0 +1,27 @@
+# 유선 LAN(enp3s0) 링크 감시 (6단계 설계 §3.5). RTL8168h에서 원인 미상 끊김 이력(2026-10-05).
+# 유선이 끊겨도 Wi-Fi 예비 경로(metric 600)로 Discord까지 나가므로 이 알림은 실제로 전달된다.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: node
+  namespace: monitoring
+spec:
+  groups:
+    - name: homelab.node
+      rules:
+        - alert: WiredLinkDown
+          expr: node_network_carrier{device="enp3s0"} == 0
+          for: 2m
+          labels:
+            severity: warning
+          annotations:
+            summary: 유선 LAN(enp3s0) 링크가 끊김
+            description: 지금은 Wi-Fi 예비 경로로 통신 중이다. 케이블·공유기 포트를 확인한다.
+        - alert: WiredLinkFlapping
+          # 카운터의 정확한 차이. increase()는 경계값(3)을 3.x로 외삽해 잘못 울린다
+          expr: (node_network_carrier_changes_total{device="enp3s0"} - node_network_carrier_changes_total{device="enp3s0"} offset 1h) > 3
+          labels:
+            severity: warning
+          annotations:
+            summary: 유선 LAN(enp3s0) 링크가 1시간에 {{ $value }}번 바뀜
+            description: 링크가 끊겼다 붙기를 반복한다. 드라이버·케이블 문제일 수 있다.

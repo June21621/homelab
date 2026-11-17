@@ -1,0 +1,29 @@
+# 컨테이너 OOM·재시작 감시 (6단계 설계 §3.5). 기본 규칙 KubePodCrashLooping과 별개로 원인(OOM)과 급증을 따로 알린다.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: workloads
+  namespace: monitoring
+spec:
+  groups:
+    - name: homelab.workloads
+      rules:
+        - alert: ContainerOOMKilled
+          # 마지막 종료 이유가 OOMKilled이고 최근 10분 안에 실제로 재시작했을 때만 (지난 일은 다시 알리지 않음)
+          expr: |
+            (kube_pod_container_status_last_terminated_reason{reason="OOMKilled"} == 1)
+            and on (namespace, pod, container)
+            (increase(kube_pod_container_status_restarts_total[10m]) > 0)
+          labels:
+            severity: warning
+          annotations:
+            summary: "{{ $labels.namespace }}/{{ $labels.pod }} ({{ $labels.container }}) 메모리 초과로 종료됨"
+            description: limits.memory를 넘었다. kubectl top·describe로 사용량과 제한을 비교한다.
+        - alert: PodRestartBurst
+          # 카운터의 정확한 차이. increase()는 경계값(3)을 3.x로 외삽해 잘못 울린다
+          expr: (kube_pod_container_status_restarts_total - kube_pod_container_status_restarts_total offset 15m) > 3
+          labels:
+            severity: warning
+          annotations:
+            summary: "{{ $labels.namespace }}/{{ $labels.pod }} ({{ $labels.container }}) 15분에 {{ $value }}번 재시작"
+            description: kubectl logs --previous로 직전 종료 원인을 본다.
