@@ -1,0 +1,78 @@
+# ArgoCDSyncFailed·ArgoCDAppDegraded·ArgoCDAppOutOfSync 테스트 (promtool test rules)
+# argocd_app_info: 값 1, 라벨에 health_status·sync_status / argocd_app_sync_total: 동기화 결과(phase)별 카운터
+rule_files: [argocd.yaml]
+evaluation_interval: 1m
+tests:
+  - name: Degraded 9분은 조용, 11분이면 warning
+    interval: 1m
+    input_series:
+      - series: 'argocd_app_info{name="portfolio-prod",namespace="argocd",health_status="Degraded",sync_status="Synced"}'
+        values: '1x12'
+    alert_rule_test:
+      - eval_time: 9m
+        alertname: ArgoCDAppDegraded
+        exp_alerts: []
+      - eval_time: 11m
+        alertname: ArgoCDAppDegraded
+        exp_alerts:
+          - exp_labels: { severity: warning, name: portfolio-prod, namespace: argocd, health_status: Degraded, sync_status: Synced }
+            exp_annotations:
+              summary: ArgoCD 앱 portfolio-prod가 10분 넘게 Degraded
+              description: 배포된 리소스가 정상이 아니다. make argocd-ui 또는 kubectl describe로 원인 리소스를 찾는다.
+
+  - name: OutOfSync 14분은 조용, 16분이면 warning
+    interval: 1m
+    input_series:
+      - series: 'argocd_app_info{name="monitoring",namespace="argocd",health_status="Healthy",sync_status="OutOfSync"}'
+        values: '1x17'
+    alert_rule_test:
+      - eval_time: 14m
+        alertname: ArgoCDAppOutOfSync
+        exp_alerts: []
+      - eval_time: 16m
+        alertname: ArgoCDAppOutOfSync
+        exp_alerts:
+          - exp_labels: { severity: warning, name: monitoring, namespace: argocd, health_status: Healthy, sync_status: OutOfSync }
+            exp_annotations:
+              summary: ArgoCD 앱 monitoring이 15분 넘게 OutOfSync
+              description: Git과 클러스터가 다르다. 자동 동기화가 막혔거나(훅·controller 상태) 누가 직접 바꿨다.
+
+  - name: 기존 Failed 카운터가 늘면 warning
+    interval: 1m
+    input_series:
+      - series: 'argocd_app_sync_total{name="portfolio-lab",namespace="argocd",phase="Failed"}'
+        values: '1x10 2x5'
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: ArgoCDSyncFailed
+        exp_alerts:
+          - exp_labels: { severity: warning, name: portfolio-lab, namespace: argocd, phase: Failed }
+            exp_annotations:
+              summary: ArgoCD 앱 portfolio-lab 동기화 실패 (Failed)
+              description: Git의 변경을 적용하지 못했다. ArgoCD UI에서 동기화 결과 메시지를 본다.
+
+  - name: 처음 생긴 Error 카운터(값 1로 시작)도 warning — increase()만으로는 못 잡음
+    interval: 1m
+    input_series:
+      - series: 'argocd_app_sync_total{name="portfolio-lab",namespace="argocd",phase="Error"}'
+        values: '_x15 1x5'
+    alert_rule_test:
+      - eval_time: 17m
+        alertname: ArgoCDSyncFailed
+        exp_alerts:
+          - exp_labels: { severity: warning, name: portfolio-lab, namespace: argocd, phase: Error }
+            exp_annotations:
+              summary: ArgoCD 앱 portfolio-lab 동기화 실패 (Error)
+              description: Git의 변경을 적용하지 못했다. ArgoCD UI에서 동기화 결과 메시지를 본다.
+
+  - name: 성공 카운터가 늘거나 오래된 실패만 있으면 조용
+    interval: 1m
+    input_series:
+      - series: 'argocd_app_sync_total{name="portfolio-prod",namespace="argocd",phase="Succeeded"}'
+        values: '1+1x20'
+      - series: 'argocd_app_sync_total{name="portfolio-prod",namespace="argocd",phase="Failed"}'
+        values: '3x20'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: ArgoCDSyncFailed
+        exp_alerts: []
