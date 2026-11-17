@@ -27,5 +27,7 @@
 
 - 1단계 실측(2026-10-20): k3s 기반이 약 0.9GiB(k3s-server 659Mi, containerd 164Mi, 내장 파드 ~64Mi)로
   추정(~800Mi)과 비슷하다. 남은 예산 약 3GB를 ArgoCD와 모니터링이 쓴다
+- 6단계 실측(2026-11-17): ArgoCD 약 0.5GiB + 모니터링(Prometheus·Grafana·Alertmanager·operator·KSM·node-exporter) 약 0.95GiB.
+  노드 전체 사용 3.8GiB. 시작값으로 잡은 Grafana(256Mi)·ArgoCD controller(512Mi) limits는 첫 설치에서 OOM이 나 올렸다(ADR 0010)
 - 지나간 로그 검색이 안 된다. 파드가 재시작되면 이전 로그는 `kubectl logs --previous`로 한 번만 볼 수 있다
 - 장애 원인 분석이 로그에 크게 의존하게 되면 Loki를 단일 바이너리 + 짧은 보존으로 다시 검토한다

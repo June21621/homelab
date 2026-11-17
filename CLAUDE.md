@@ -21,7 +21,8 @@ N100 미니 PC를 24시간 돌아가는 **서비스 배포용 GitOps k3s 클러�
 - Tailscale: 100.124.153.34, 기기 이름 `kjt-home-server`, `tag:server`(key expiry 꺼짐). Ansible `tailscale` 역할로 관리(1.102.4 고정)
   - ACL(2026-10-18): member→tag:server는 tcp:22·6443·icmp만, member→self 전부. 기본 전부 허용 규칙 삭제
 - k3s v1.36.5+k3s1 단일 노드 (2026-10-18 설치). kubeconfig는 관리 PC `~/.kube/homelab.yaml`
-- ArgoCD(argo-cd 차트 10.10.5) 자기 관리, 메모리 약 0.3GiB (2026-11-02). 서비스: portfolio prod·lab
+- ArgoCD(argo-cd 차트 10.10.5) 자기 관리, 메모리 약 0.5GiB(controller limit 1Gi). 서비스: portfolio prod·lab
+- 모니터링: kube-prometheus-stack 92.17.0(앱 `monitoring`) 약 0.95GiB. 노드 전체 사용 3.8GiB (2026-11-17)
 - 절전 차단됨 (sleep/suspend/hibernate target mask)
 
 ## 아키텍처 결정사항
@@ -38,9 +39,9 @@ N100 미니 PC를 24시간 돌아가는 **서비스 배포용 GitOps k3s 클러�
 | CI | GitHub Actions 호스티드 러너 → GHCR. 앱 repo의 Actions는 homelab에 이미지 태그 **PR만** 열고, 태그 줄만 바뀐 PR은 경로 검사 통과 시 자동 병합. 쓰기 자격 증명은 GitHub App(단기 토큰). 자동 병합 조건: 필수 검사 `tag-pr-guard`(main 쪽 코드로 실행)·`static-checks`, ruleset은 Terraform(`terraform/github/`), 우회 없음. App `june21621-tag-bump`(Workflows 권한 없음). 태그 PR은 `newTag`·`digest` 두 줄만(이미지는 다이제스트로 배포). 봇은 `bump/**` 브랜치에만 쓸 수 있음(ruleset `bot-only-bump-branches`). App 키는 앱 repo environment `tag-bump`(main만) |
 | CD | 클러스터 안 ArgoCD가 pull. 롤백은 git revert |
 | 외부 노출 | Cloudflare Tunnel(아웃바운드만). 인바운드 포트 없음, k3s API 공개 노출 없음 |
-| 내부 관측 | 경량 kube-prometheus-stack(보존 7일), Alertmanager → Discord. 로그 스택(Loki) 없음 |
+| 내부 관측 | 경량 kube-prometheus-stack(보존 7일), Alertmanager → Discord(warning·critical, URL은 Secret 파일 경로로만). Grafana는 `make grafana-ui`. k3s 내장 컴포넌트·API SLO 기본 규칙 끔, 직접 만든 규칙은 promtool 테스트(ADR 0010). 로그 스택(Loki) 없음 |
 | 외부 관측 | 호스트에 CloudWatch Agent + SSM 하이브리드 활성화. 노드 지표 10개 이하, 하트비트 알람(TreatMissingData=breaching) → SNS 이메일. 월 $5 이하 |
-| 감시자 감시 | Alertmanager Watchdog → healthchecks.io (dead man's switch) |
+| 감시자 감시 | Alertmanager Watchdog → healthchecks.io (dead man's switch). 끊기면 **이메일**(Discord 아님), 감지 약 15분 |
 | 시크릿 | SOPS + age로 확정(ADR 0003). 호스트는 Ansible `community.sops`가 관리 PC에서 복호화해 전달, 클러스터는 ArgoCD KSOPS + **클러스터 전용 age 키**(`gitops/`만 풀 수 있음, ADR 0008) |
 | 원격 접속 | Tailscale (호스트에 직접 설치). **Tailscale 트래픽은 ufw를 거치지 않으므로 포트 제한은 Tailscale ACL**(ADR 0004) |
 | 백업 | k3s etcd 스냅샷 → S3 (복원 리허설 2026-10-20). 볼륨 데이터(DB) 백업은 DB가 생기면 restic 검토 |
@@ -54,7 +55,7 @@ N100 미니 PC를 24시간 돌아가는 **서비스 배포용 GitOps k3s 클러�
 - 이미지 레지스트리는 외부(GHCR). Harbor·NFS·SonarQube 같은 부가 서버를 미니 PC에 두지 않는다
 
 ## 리소스 제약 (16GB)
-- **기반 컴포넌트(k3s·ArgoCD·오퍼레이터·모니터링·cloudflared) 합계 4GB 안팎**. k3s 기반 실측 약 0.9GiB(2026-10-20), ArgoCD 약 0.3GiB(2026-11-02)
+- **기반 컴포넌트(k3s·ArgoCD·오퍼레이터·모니터링·cloudflared) 합계 4GB 안팎**. k3s 기반 실측 약 0.9GiB(2026-10-20), ArgoCD 약 0.5GiB·모니터링 약 0.95GiB(2026-11-17)
 - **모든 Helm 차트에 requests/limits 지정**, 차트 버전 고정(`latest` 금지)
 - Prometheus 보존 기간 7일
 - PR 프리뷰: 전역 동시 개수 상한 + 프로젝트별 상한, TTL, namespace별 ResourceQuota/LimitRange/NetworkPolicy
@@ -95,8 +96,12 @@ homelab/
      main 직접 push 거부(2026-11-13, `docs/verification/2026-11-13-tag-pr-guard.md`). ADR 0005~0009
    - 최종 리뷰에서 우회 경로 2건(줄 구분 문자 숨기기, 사람 PR 가로채기)과 롤백·태그 덮어쓰기 발견 → 수정,
      실제 공격 8종 재검증 통과(2026-11-16, 같은 문서 §4)
-6. **내부 모니터링** — 경량 kube-prometheus-stack, Alertmanager → Discord, Watchdog → healthchecks.io. 알림: OOMKilled, 재시작, ArgoCD 동기화 실패, 디스크, 마지막 S3 스냅샷 7시간 초과
+6. ✅ **내부 모니터링** — 경량 kube-prometheus-stack, Alertmanager → Discord, Watchdog → healthchecks.io. 알림: OOMKilled, 재시작, ArgoCD 동기화 실패, 디스크, 마지막 S3 스냅샷 7시간 초과, 유선 링크 끊김
    - 확인: 테스트 알림 수신, Watchdog 핑 수신
+   - 결과: 테스트 알림 30초 안에 Discord·5분 뒤 해결 알림, Watchdog 끊김 15분 안에 healthchecks.io 이메일·해제 1분 안에 복구(2026-11-17,
+     `docs/verification/2026-11-17-monitoring-alerts.md`). 첫 설치에서 Grafana·ArgoCD controller OOM을 직접 만든 규칙이 알림 →
+     controller가 자기 메모리 수정을 못 적용하는 교착을 Git과 같은 값 kubectl patch + 파드 삭제로 복구(약 7분). ADR 0010
+   - 남음: API·etcd 히스토그램 drop 전후 측정(6-4, 24시간 기준값 뒤)
 7. **CloudWatch + Terraform(AWS) + Cloudflare Tunnel** — SSM 하이브리드, 하트비트 알람 → SNS 이메일, Budgets $5, Tailscale ACL Terraform 이관
    - 확인: 에이전트를 멈추면 알람 이메일 수신, 외부에서 서비스 URL 접속(인바운드 포트 0)
 8. **PR 프리뷰 오퍼레이터** — 쿼터·동시성 상한·TTL·PR 코멘트 상태 보고, README에 ApplicationSet PR Generator와 비교
@@ -107,6 +112,8 @@ homelab/
   - Tailscale 경유 포트 제한은 ufw가 아니라 **Tailscale ACL**에서 한다. 방화벽 변경 후에는 바깥에서 실제로 접속해 확인(`make verify-k3s`)
 - **파괴적 명령 금지**: `rm -rf`, `kubectl delete`, 디스크 포맷, `terraform destroy` 등은 실행 전 반드시 확인
 - **ArgoCD 이후 클러스터 변경은 Git으로만**. 클러스터에는 조회·디버깅(get, describe, logs)만
+  - 예외: ArgoCD가 자기 수정을 적용하지 못하는 교착일 때만, 사용자 승인 후 **Git에 이미 병합된 것과 같은 값**을 kubectl로 넣는다(ADR 0009). runbook에 기록
+  - Alertmanager API(테스트 알림·silence, `make alert-test`)는 클러스터 리소스를 바꾸지 않으므로 허용
 - **평문 시크릿·AWS 키·age 키·Tailscale auth key를 절대 커밋하지 않음**. `.gitignore`와 pre-commit으로 방지
 - 모든 스크립트·플레이북은 **멱등**하게, 실패 시 non-zero 종료
 - 셸: `set -euo pipefail`, shellcheck 통과. 명령 연결이면 셸, 로직·API·측정이면 Python(`uv`로 의존성 고정)

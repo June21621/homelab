@@ -155,18 +155,37 @@
   repo 시크릿 2개와 옛 App 키 삭제 (키 교체)
 - 11-16 main에 모두 병합된 원격 사람 브랜치 11개 삭제(main에 없는 커밋 0개 확인 후)
 
+### 2026-11-17 (6단계: 내부 모니터링)
+- Discord: 개인 서버 생성 → 알림 채널 → 웹후크 생성. 휴대폰 앱에서 채널 알림 "모든 메시지"
+- healthchecks.io: 무료 계정, check `homelab-watchdog`(Simple, Period 5분, Grace 10분, 알림은 가입 이메일. Discord 연동은 일부러 안 함)
+- `bash scripts/init-monitoring-secrets.sh`로 `gitops/platform/monitoring/secrets.sops.yaml` 생성(URL 두 개 입력, 화면 미표시).
+  Grafana 관리자 비밀번호는 스크립트가 만들어 클립보드로 넘김 → **처음엔 Bitwarden에 저장하지 않아**, 클러스터 Secret에서
+  `kubectl ... get secret grafana-admin -o jsonpath='{.data.admin-password}' | base64 -d | clip.exe`로 다시 꺼내 Bitwarden `homelab-grafana-admin`에 저장
+- **비상 조치(사용자 승인)**: ArgoCD controller가 OOM으로 자기 limits 1Gi 수정(PR 6-2b)을 적용하지 못하는 교착 →
+  `kubectl -n argocd patch statefulset argocd-application-controller`로 Git과 같은 값(requests 384Mi / limits 1Gi) →
+  옛 리비전 파드가 CrashLoopBackOff에 멈춰 `kubectl -n argocd delete pod argocd-application-controller-0` (14:55, 14:57 복구)
+- 테스트 알림 `make alert-test CMD=fire`, 감시자 감시 `make alert-test CMD=silence-watchdog`(30분 silence, 자동 해제)
+  — 결과는 `docs/verification/2026-11-17-monitoring-alerts.md`
+- 참고: healthchecks.io 메일에는 집 공인 IP가 찍힌다. public repo 문서에 옮기지 않는다
+
 ## 3. 남은 수동 작업
 - [ ] 공유기 DHCP 예약: `68:1d:ef:3f:d7:fe` → `192.168.35.235`
 - [x] Tailscale 관리 콘솔에서 이 기기의 key expiry 끄기 (2026-10-08)
 - [ ] 7단계: Tailscale ACL(tagOwners, grants 2개)을 Terraform으로 이관하고 `tests`(22·6443 허용, 10250·80·443 차단) 추가
 - [ ] Wi-Fi 예비 경로 설정(비밀번호 포함)을 SOPS + Ansible로 옮기기 (SOPS 준비됨, 지금 가능)
-- [ ] 6단계: 유선 링크 끊김 알림
+- [x] 6단계: 유선 링크 끊김 알림 (`WiredLinkDown`·`WiredLinkFlapping` + promtool 테스트, 2026-11-17. 실제 케이블 분리는 9단계)
 - [ ] 유선 LAN 기기에서 `make verify-k3s`로 LAN 쪽 포트(6443·80·443·10250·2379·2380) 차단 확인 (관리 PC는 무선 격리로 건너뜀)
 - [ ] 서비스에 DB가 생기면 볼륨 데이터 백업(restic 등) 검토 — etcd 스냅샷에는 볼륨이 없음
 - [ ] Google Authenticator 클라우드 백업 확인, 또는 AWS root에 두 번째 MFA 등록
 - [x] 4단계: `homelab-k3s-backup` 키를 실제 업로드(etcd 스냅샷)로 검증 (2026-10-18 정기 스냅샷부터 S3 업로드, 2026-10-20 S3 사본으로 복원)
 - [ ] AWS 액세스 키 교체 주기 정하기 (예: 1년)
 - [ ] PAT `homelab-terraform-github-pat` 갱신 (2027-02-10 만료 전)
-- [ ] 6단계: Discord 웹훅을 `gitops/`에 SOPS로 (KSOPS 첫 실사용)
+- [x] 6단계: Discord 웹훅을 `gitops/`에 SOPS로 (KSOPS 첫 실사용, 2026-11-17. 클러스터 키만으로 복호화 확인)
+- [ ] 6-4: API·etcd 히스토그램 drop — 2026-11-18 15:45 이후 24시간 기준값 측정 → drop PR → 다시 측정(검증 기록 §7)
+- [ ] 앱 repo(커넥티드카 등)에서 PostSync 훅 스모크 테스트 추가 — 실패하면 `ArgoCDSyncFailed`로 Discord 알림
+- [ ] Grafana에서 만든 대시보드는 재시작하면 사라짐(저장소 없음) → 오래 쓸 대시보드는 ConfigMap으로 Git에
+- [ ] (선택) Discord 알림 메시지를 짧은 한국어 템플릿으로 (`alertmanager.config.templates`)
+- [ ] `monitoring` 앱을 일부러 없앨 때: finalizer가 없어 Application만 지워지고 리소스는 남는다. 남은 리소스와 prometheus-operator CRD를
+  사용자 확인 후 정리(CRD를 지우면 모든 ServiceMonitor·PrometheusRule이 함께 사라짐)
 - [ ] static-checks에 kubeconform(매니페스트 스키마)·Trivy(이미지 취약점) 추가 검토
 - [ ] 앱 repo가 2개 이상이 되면: 재사용 워크플로를 버전 태그로 배포하고 Renovate로 앱 repo에 전파
