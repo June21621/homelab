@@ -175,10 +175,12 @@ grafana:
     passwordKey: admin-password
   persistence:
     enabled: false
+  # 시작값 256Mi / 사이드카 64Mi에서 첫 설치 때 세 컨테이너가 모두 OOMKilled(2026-11-17, 시작 직후 약 250Mi).
+  # Grafana 13은 시작할 때 내장 API를 한꺼번에 올려 메모리를 많이 쓴다
   resources:
-    requests: { cpu: 25m, memory: 128Mi }
-    limits: { memory: 256Mi }
-  sidecar:
+    requests: { cpu: 25m, memory: 256Mi }
+    limits: { memory: 512Mi }
+  sidecar:   # 대시보드·데이터소스 ConfigMap을 읽어 Grafana에 넣는 사이드카 2개(Python)
     resources:
-      requests: { cpu: 5m, memory: 32Mi }
-      limits: { memory: 64Mi }
+      requests: { cpu: 5m, memory: 64Mi }
+      limits: { memory: 128Mi }

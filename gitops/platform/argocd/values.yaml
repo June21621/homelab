@@ -21,9 +21,11 @@ configs:
 
 # --- 켜는 컴포넌트 ---
 controller:             # Git 상태와 클러스터 상태를 비교·동기화
+  # limits 512Mi → 1Gi (2026-11-17): monitoring 앱(CRD·규칙·대시보드 수백 개) 첫 동기화 중 OOMKilled.
+  # 평소 약 344Mi. 관리하는 리소스가 늘수록 캐시가 커진다
   resources:
-    requests: { cpu: 100m, memory: 256Mi }
-    limits: { memory: 512Mi }
+    requests: { cpu: 100m, memory: 384Mi }
+    limits: { memory: 1Gi }
 repoServer:             # Git을 받아 Helm·Kustomize로 렌더링
   resources:
     requests: { cpu: 50m, memory: 128Mi }
