@@ -6,7 +6,7 @@ SHELL := /usr/bin/env bash
 export ANSIBLE_CONFIG := $(CURDIR)/ansible/ansible.cfg
 
 .PHONY: help workstation hooks lint deps agent host host-check kubeconfig verify-k3s etcd-restore \
-	argocd-bootstrap verify-argocd argocd-ui github-plan github-apply
+	argocd-bootstrap verify-argocd argocd-ui github-plan github-apply grafana-ui alert-test
 
 ANSIBLE := cd ansible && ansible-playbook
 TF_ARGOCD := terraform -chdir=terraform/argocd-bootstrap
@@ -66,3 +66,13 @@ argocd-ui: ## ArgoCD 웹 UI 터널 (출력된 주소를 Windows 브라우저에�
 	@ip="$$(hostname -I | awk '{print $$1}')"; \
 	echo "Windows 브라우저: https://$${ip}:8080   (WSL 안: https://localhost:8080)"; \
 	KUBECONFIG=$(HOME)/.kube/homelab.yaml kubectl -n argocd port-forward --address "127.0.0.1,$${ip}" svc/argocd-server 8080:443
+
+grafana-ui: ## Grafana 웹 UI 터널 (사용자 admin, 비밀번호는 Bitwarden "homelab-grafana-admin", Ctrl+C로 종료)
+	@# argocd-ui와 같은 이유로 WSL 가상 NIC 주소에도 연다(LAN에서는 안 보임)
+	@ip="$$(hostname -I | awk '{print $$1}')"; \
+	echo "Windows 브라우저: http://$${ip}:3000   (WSL 안: http://localhost:3000)"; \
+	KUBECONFIG=$(HOME)/.kube/homelab.yaml kubectl -n monitoring port-forward --address "127.0.0.1,$${ip}" svc/monitoring-grafana 3000:80
+
+alert-test: ## Alertmanager 테스트 (CMD=fire: 가짜 알림 → Discord / CMD=silence-watchdog: 감시자 감시 확인)
+	@test -n "$(CMD)" || { echo "CMD=fire 또는 CMD=silence-watchdog" >&2; exit 1; }
+	bash scripts/alert-test.sh $(CMD)

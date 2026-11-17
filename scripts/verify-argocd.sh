@@ -92,6 +92,17 @@ monitoring_render_ok() {
   uv run --quiet --script scripts/check_rendered.py monitoring <<<"${out}"
 }
 
+# 렌더링된 Alertmanager 설정을 amtool로 검사 (receiver·route 문법, *_file 키 이름 오타 등)
+monitoring_am_config_ok() {
+  local out dir rc=0
+  out="$(render_monitoring)" || return 1
+  dir="$(mktemp -d)"
+  uv run --quiet --script scripts/am_config_for_check.py "${dir}" <<<"${out}" &&
+    amtool check-config "${dir}/alertmanager.yaml" || rc=1
+  rm -rf "${dir}"
+  return "${rc}"
+}
+
 monitoring_checks() {
   # 6-2 전에는 monitoring 앱이 없다. CI에는 age 키·ksops가 없어 Kustomize(KSOPS)는 렌더링하지 않는다(설계 §3.8)
   if [[ ! -f "${MONITORING_APP}" ]]; then
@@ -99,6 +110,7 @@ monitoring_checks() {
     return
   fi
   check "monitoring 차트 렌더링: 제한·끈 수집·끈 규칙·URL은 파일로·Watchdog 1분" monitoring_render_ok
+  check "monitoring Alertmanager 설정: amtool check-config" monitoring_am_config_ok
 }
 
 static_checks() {

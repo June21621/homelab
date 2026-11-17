@@ -1,0 +1,67 @@
+# EtcdS3SnapshotStale 테스트 (promtool test rules, scripts/check-prom-rules.sh가 실행)
+# 지표 값 = 스냅샷 생성 시각(유닉스 초). 0이면 테스트 시작 시각(1970-01-01)에 만들어진 것
+rule_files: [backup.yaml]
+evaluation_interval: 1m
+tests:
+  - name: S3 스냅샷이 6시간 59분 전이면 조용, 7시간 1분 전이면 critical
+    interval: 1m
+    input_series:
+      - series: 'kube_customresource_etcdsnapshotfile_created_timestamp_seconds{name="s3-etcd-snapshot-homelab-1",location="s3://june21621-homelab-k3s-backup/etcd/etcd-snapshot-homelab-1"}'
+        values: '0x430'
+    alert_rule_test:
+      - eval_time: 419m
+        alertname: EtcdS3SnapshotStale
+        exp_alerts: []
+      - eval_time: 421m
+        alertname: EtcdS3SnapshotStale
+        exp_alerts:
+          - exp_labels: { severity: critical }
+            exp_annotations:
+              summary: 마지막 etcd S3 스냅샷이 7시간 넘게 없음
+              description: >-
+                k3s 정기 스냅샷(6시간)이 S3에 올라가지 않았거나 지표 수집이 고장 났다.
+                확인: kubectl get etcdsnapshotfiles.k3s.cattle.io, 미니 PC의 journalctl -u k3s | grep -i s3
+
+  - name: 스냅샷 지표가 아예 없으면 critical (KSM 설정·RBAC 고장도 잡음)
+    interval: 1m
+    input_series:
+      - series: 'up{job="kube-state-metrics"}'
+        values: '1x10'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: EtcdS3SnapshotStale
+        exp_alerts:
+          - exp_labels: { severity: critical }
+            exp_annotations:
+              summary: 마지막 etcd S3 스냅샷이 7시간 넘게 없음
+              description: >-
+                k3s 정기 스냅샷(6시간)이 S3에 올라가지 않았거나 지표 수집이 고장 났다.
+                확인: kubectl get etcdsnapshotfiles.k3s.cattle.io, 미니 PC의 journalctl -u k3s | grep -i s3
+
+  - name: 로컬 스냅샷만 새것이면 critical (S3 업로드 증거가 아님)
+    interval: 1m
+    input_series:
+      - series: 'kube_customresource_etcdsnapshotfile_created_timestamp_seconds{name="local-etcd-snapshot-homelab-2",location="file:///var/lib/rancher/k3s/server/db/snapshots/etcd-snapshot-homelab-2"}'
+        values: '25000x430'
+    alert_rule_test:
+      - eval_time: 421m
+        alertname: EtcdS3SnapshotStale
+        exp_alerts:
+          - exp_labels: { severity: critical }
+            exp_annotations:
+              summary: 마지막 etcd S3 스냅샷이 7시간 넘게 없음
+              description: >-
+                k3s 정기 스냅샷(6시간)이 S3에 올라가지 않았거나 지표 수집이 고장 났다.
+                확인: kubectl get etcdsnapshotfiles.k3s.cattle.io, 미니 PC의 journalctl -u k3s | grep -i s3
+
+  - name: 오래된 S3 스냅샷이 있어도 새 S3 스냅샷이 있으면 조용
+    interval: 1m
+    input_series:
+      - series: 'kube_customresource_etcdsnapshotfile_created_timestamp_seconds{name="s3-old",location="s3://b/etcd/old"}'
+        values: '0x430'
+      - series: 'kube_customresource_etcdsnapshotfile_created_timestamp_seconds{name="s3-new",location="s3://b/etcd/new"}'
+        values: '21600x430'
+    alert_rule_test:
+      - eval_time: 421m
+        alertname: EtcdS3SnapshotStale
+        exp_alerts: []

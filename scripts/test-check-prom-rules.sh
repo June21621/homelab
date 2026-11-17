@@ -64,6 +64,11 @@ rule "${ROOT}/good" 'up == 0'
 unit "${ROOT}/good" '[{exp_labels: {severity: warning, job: x}}]'
 case_ "올바른 규칙 + 맞는 테스트는 통과" 0 "${ROOT}/good"
 
+rule "${ROOT}/orphan" 'up == 0'
+unit "${ROOT}/orphan" '[]'
+rm "${ROOT}/orphan/sample.yaml"
+case_ "테스트만 있고 규칙 파일이 없으면 실패" 1 "${ROOT}/orphan"
+
 rule "${ROOT}/syntax" 'rate(up'
 case_ "문법이 깨진 규칙은 실패" 1 "${ROOT}/syntax"
 

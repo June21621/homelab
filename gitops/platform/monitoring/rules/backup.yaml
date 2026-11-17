@@ -1,0 +1,25 @@
+# etcd 스냅샷 S3 업로드 감시 (6단계 설계 §3.5)
+# k3s는 스냅샷마다 ETCDSnapshotFile 리소스를 만든다. kube-state-metrics가 그 생성 시각을 지표로 바꾼다(values.yaml
+# kube-state-metrics.customResourceState). 업로드 실패는 지금까지 k3s 로그에만 남았다.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: backup
+  namespace: monitoring
+spec:
+  groups:
+    - name: homelab.backup
+      rules:
+        - alert: EtcdS3SnapshotStale
+          # 정기 스냅샷은 6시간마다. 7시간이 넘었거나 S3 스냅샷 지표가 아예 없으면(KSM·RBAC 고장 포함) 울린다
+          expr: |
+            (time() - max(kube_customresource_etcdsnapshotfile_created_timestamp_seconds{location=~"s3://.*"})) > 7 * 3600
+            or
+            absent(kube_customresource_etcdsnapshotfile_created_timestamp_seconds{location=~"s3://.*"})
+          labels:
+            severity: critical
+          annotations:
+            summary: 마지막 etcd S3 스냅샷이 7시간 넘게 없음
+            description: >-
+              k3s 정기 스냅샷(6시간)이 S3에 올라가지 않았거나 지표 수집이 고장 났다.
+              확인: kubectl get etcdsnapshotfiles.k3s.cattle.io, 미니 PC의 journalctl -u k3s | grep -i s3

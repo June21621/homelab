@@ -1,0 +1,184 @@
+# kube-prometheus-stack 차트 values (6단계 설계: docs/superpowers/specs/2026-11-16-step6-monitoring-design.md).
+# 차트 버전은 gitops/root/monitoring.yaml에 있다. 메모리 값은 시작값이며 설치 후 `kubectl top pods -n monitoring`으로 조정한다.
+# CPU는 requests만 두고 limits는 두지 않는다(ArgoCD values와 같은 방식).
+#
+# 비밀값(Discord 웹훅, healthchecks.io ping URL, Grafana 관리자 비밀번호)은 이 파일에 없다.
+# 같은 폴더의 secrets.sops.yaml(KSOPS)이 Secret을 만들고, 여기서는 그 파일 경로·Secret 이름만 참조한다(§3.3).
+
+# --- k3s는 etcd·scheduler·controller-manager·kube-proxy를 k3s server 한 프로세스에 넣어 따로 수집할 주소가 없다 (§3.1) ---
+kubeEtcd:
+  enabled: false
+kubeScheduler:
+  enabled: false
+kubeControllerManager:
+  enabled: false
+kubeProxy:
+  enabled: false
+
+# --- 기본 규칙: k3s에 안 맞는 것(오탐)과 단일 노드에 쓸모없는 API SLO만 끈다 (§3.4) ---
+defaultRules:
+  rules:
+    etcd: false
+    kubeControllerManager: false
+    kubeProxy: false
+    kubeSchedulerAlerting: false
+    kubeSchedulerRecording: false
+    windows: false
+    # 다수 사용자용 API 오류 예산 계산. 가장 큰 지표를 여러 시간 창으로 재계산해 무겁다.
+    # API 다운은 유지하는 kubernetesSystem의 KubeAPIDown이 잡는다
+    kubeApiserverBurnrate: false
+    kubeApiserverHistogram: false
+    kubeApiserverSlos: false
+    kubeApiserverAvailability: false   # 30일 가용성. 보존이 7일이라 성립하지 않음
+
+windowsMonitoring:
+  enabled: false
+
+# --- Prometheus ---
+prometheus:
+  prometheusSpec:
+    retention: 7d
+    retentionSize: 8GB
+    scrapeInterval: 60s
+    evaluationInterval: 60s
+    # 우리 ServiceMonitor·PrometheusRule을 Helm release 라벨 없이도 고른다
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    probeSelectorNilUsesHelmValues: false
+    scrapeConfigSelectorNilUsesHelmValues: false
+    resources:
+      requests: { cpu: 100m, memory: 400Mi }
+      limits: { memory: 1Gi }
+    # 재시작해도 지표가 남도록 local-path PVC (k3s 기본 StorageClass)
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: local-path
+          accessModes: [ReadWriteOnce]
+          resources:
+            requests:
+              storage: 10Gi
+
+# --- Alertmanager ---
+alertmanager:
+  alertmanagerSpec:
+    replicas: 1
+    resources:
+      requests: { cpu: 10m, memory: 32Mi }
+      limits: { memory: 64Mi }
+    # secrets.sops.yaml의 Secret을 /etc/alertmanager/secrets/alertmanager-receivers/<키>로 마운트
+    secrets:
+      - alertmanager-receivers
+  # 차트 기본 inhibit_rules(critical이 같은 대상의 warning 억제 등)는 그대로 둔다. 아래 route·receivers만 바꾼다
+  config:
+    route:
+      receiver: "null"
+      group_by: [alertname, namespace]
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 4h
+      routes:
+        # 감시자 감시: 항상 울리는 Watchdog을 1분마다 healthchecks.io로. 끊기면 healthchecks.io가 이메일 (§3.7)
+        # group_interval까지 1m으로 줄여야 실제로 1분마다 나간다
+        - receiver: healthchecks
+          matchers:
+            - alertname = "Watchdog"
+          group_wait: 0s
+          group_interval: 1m
+          repeat_interval: 1m
+        - receiver: "null"
+          matchers:
+            - alertname = "InfoInhibitor"
+        - receiver: discord
+          matchers:
+            - severity =~ "warning|critical"
+    receivers:
+      - name: "null"
+      - name: discord
+        discord_configs:
+          - webhook_url_file: /etc/alertmanager/secrets/alertmanager-receivers/discord-webhook-url
+            send_resolved: true
+      - name: healthchecks
+        webhook_configs:
+          - url_file: /etc/alertmanager/secrets/alertmanager-receivers/healthchecks-ping-url
+            send_resolved: false
+    templates:
+      - /etc/alertmanager/config/*.tmpl
+
+# --- prometheus-operator ---
+prometheusOperator:
+  resources:
+    requests: { cpu: 20m, memory: 64Mi }
+    limits: { memory: 128Mi }
+  # Prometheus·Alertmanager에 붙는 설정 리로더 사이드카
+  prometheusConfigReloader:
+    resources:
+      requests: { cpu: 5m, memory: 16Mi }
+      limits: { memory: 32Mi }
+  admissionWebhooks:
+    deployment:
+      resources:
+        requests: { cpu: 5m, memory: 16Mi }
+        limits: { memory: 32Mi }
+    patch:
+      resources:
+        requests: { cpu: 5m, memory: 16Mi }
+        limits: { memory: 32Mi }
+
+# --- kube-state-metrics ---
+kube-state-metrics:
+  resources:
+    requests: { cpu: 10m, memory: 32Mi }
+    limits: { memory: 128Mi }
+  # k3s ETCDSnapshotFile(클러스터 범위)의 생성 시각을 지표로: 마지막 S3 스냅샷 감시 (§3.5, rules/backup.yaml)
+  # KSM v2.20.0은 RFC3339 문자열(status.creationTime)을 유닉스 초로 바꾼다
+  customResourceState:
+    enabled: true
+    config:
+      kind: CustomResourceStateMetrics
+      spec:
+        resources:
+          - groupVersionKind:
+              group: k3s.cattle.io
+              version: v1
+              kind: ETCDSnapshotFile
+            metricNamePrefix: kube_customresource
+            labelsFromPath:
+              name: [metadata, name]
+              location: [spec, location]
+            metrics:
+              - name: etcdsnapshotfile_created_timestamp_seconds
+                help: etcd 스냅샷 생성 시각(유닉스 초)
+                each:
+                  type: Gauge
+                  gauge:
+                    path: [status, creationTime]
+  # customresourcedefinitions list·watch는 customResourceState를 켜면 차트가 스스로 넣는다
+  rbac:
+    extraRules:
+      - apiGroups: [k3s.cattle.io]
+        resources: [etcdsnapshotfiles]
+        verbs: [list, watch]
+
+# --- node-exporter ---
+prometheus-node-exporter:
+  resources:
+    requests: { cpu: 10m, memory: 32Mi }
+    limits: { memory: 64Mi }
+
+# --- Grafana (메모리가 빠듯하면 가장 먼저 뺄 후보, §7) ---
+grafana:
+  admin:
+    existingSecret: grafana-admin   # secrets.sops.yaml. 차트 기본 비밀번호를 쓰지 않는다
+    userKey: admin-user
+    passwordKey: admin-password
+  persistence:
+    enabled: false
+  resources:
+    requests: { cpu: 25m, memory: 128Mi }
+    limits: { memory: 256Mi }
+  sidecar:
+    resources:
+      requests: { cpu: 5m, memory: 32Mi }
+      limits: { memory: 64Mi }

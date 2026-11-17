@@ -1,0 +1,60 @@
+# ContainerOOMKilled·PodRestartBurst 테스트 (promtool test rules)
+rule_files: [workloads.yaml]
+evaluation_interval: 1m
+tests:
+  - name: OOMKilled로 재시작하면 warning
+    interval: 1m
+    input_series:
+      - series: 'kube_pod_container_status_last_terminated_reason{namespace="portfolio-lab",pod="portfolio-abc",container="portfolio",reason="OOMKilled"}'
+        values: '1x6'
+      - series: 'kube_pod_container_status_restarts_total{namespace="portfolio-lab",pod="portfolio-abc",container="portfolio"}'
+        values: '0 0 0 1 1 1 1'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: ContainerOOMKilled
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              namespace: portfolio-lab
+              pod: portfolio-abc
+              container: portfolio
+              reason: OOMKilled
+            exp_annotations:
+              summary: portfolio-lab/portfolio-abc (portfolio) 메모리 초과로 종료됨
+              description: limits.memory를 넘었다. kubectl top·describe로 사용량과 제한을 비교한다.
+
+  - name: 마지막 종료 이유가 OOMKilled여도 10분 넘게 재시작이 없으면 조용 (지난 일)
+    interval: 1m
+    input_series:
+      - series: 'kube_pod_container_status_last_terminated_reason{namespace="portfolio-lab",pod="portfolio-abc",container="portfolio",reason="OOMKilled"}'
+        values: '1x20'
+      - series: 'kube_pod_container_status_restarts_total{namespace="portfolio-lab",pod="portfolio-abc",container="portfolio"}'
+        values: '1x20'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: ContainerOOMKilled
+        exp_alerts: []
+
+  - name: 15분에 4번 재시작하면 warning
+    interval: 1m
+    input_series:
+      - series: 'kube_pod_container_status_restarts_total{namespace="portfolio",pod="portfolio-xyz",container="portfolio"}'
+        values: '0x15 4'
+    alert_rule_test:
+      - eval_time: 16m
+        alertname: PodRestartBurst
+        exp_alerts:
+          - exp_labels: { severity: warning, namespace: portfolio, pod: portfolio-xyz, container: portfolio }
+            exp_annotations:
+              summary: portfolio/portfolio-xyz (portfolio) 15분에 4번 재시작
+              description: kubectl logs --previous로 직전 종료 원인을 본다.
+
+  - name: 15분에 3번 재시작은 조용 (경계, 기본 KubePodCrashLooping이 따로 봄)
+    interval: 1m
+    input_series:
+      - series: 'kube_pod_container_status_restarts_total{namespace="portfolio",pod="portfolio-xyz",container="portfolio"}'
+        values: '0x15 3'
+    alert_rule_test:
+      - eval_time: 16m
+        alertname: PodRestartBurst
+        exp_alerts: []
