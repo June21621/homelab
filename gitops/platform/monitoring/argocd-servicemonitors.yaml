@@ -1,0 +1,44 @@
+# ArgoCD 지표 수집 (6단계 설계 §3.6). 지표 Service는 ArgoCD 차트가 만들고(gitops/platform/argocd/values.yaml
+# metrics.enabled), 수집 설정은 여기 monitoring 앱에 둔다. ArgoCD 차트에서 ServiceMonitor를 켜면 Terraform이
+# CRD 없는 빈 클러스터에 ArgoCD를 설치할 때 실패한다.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: argocd-application-controller
+  namespace: monitoring
+spec:
+  namespaceSelector:
+    matchNames: [argocd]
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: argocd-metrics   # Service argocd-application-controller-metrics (8082)
+  endpoints:
+    - port: http-metrics
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: argocd-server
+  namespace: monitoring
+spec:
+  namespaceSelector:
+    matchNames: [argocd]
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: argocd-server-metrics   # 8083
+  endpoints:
+    - port: http-metrics
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: argocd-repo-server
+  namespace: monitoring
+spec:
+  namespaceSelector:
+    matchNames: [argocd]
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: argocd-repo-server-metrics   # 8084
+  endpoints:
+    - port: http-metrics

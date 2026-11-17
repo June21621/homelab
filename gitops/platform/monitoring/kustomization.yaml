@@ -8,6 +8,8 @@ generators:
   - ./ksops-generator.yaml
 # 직접 만든 알림 규칙. 테스트(rules/tests/)는 scripts/check-prom-rules.sh가 PR 단계에서 돌린다
 resources:
+  - ./argocd-servicemonitors.yaml
+  - ./rules/argocd.yaml
   - ./rules/backup.yaml
   - ./rules/node.yaml
   - ./rules/workloads.yaml

@@ -1,0 +1,40 @@
+# ArgoCD 동기화 감시 (6단계 설계 §3.5). 지표는 ArgoCD 차트의 지표 Service(6-3a)를
+# argocd-servicemonitors.yaml이 수집한다. ArgoCD notifications는 끄고 알림은 Alertmanager 한곳으로 모은다.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: argocd
+  namespace: monitoring
+spec:
+  groups:
+    - name: homelab.argocd
+      rules:
+        - alert: ArgoCDSyncFailed
+          # 카운터는 첫 실패 때 값 1로 처음 생긴다. increase()는 이 첫 표본을 못 보므로
+          # "10분 전에는 없던 실패 시계열"도 함께 잡는다
+          expr: |
+            increase(argocd_app_sync_total{phase=~"Error|Failed"}[10m]) > 0
+            or
+            (argocd_app_sync_total{phase=~"Error|Failed"} unless argocd_app_sync_total{phase=~"Error|Failed"} offset 10m)
+          labels:
+            severity: warning
+          annotations:
+            summary: "ArgoCD 앱 {{ $labels.name }} 동기화 실패 ({{ $labels.phase }})"
+            description: Git의 변경을 적용하지 못했다. ArgoCD UI에서 동기화 결과 메시지를 본다.
+        - alert: ArgoCDAppDegraded
+          expr: argocd_app_info{health_status="Degraded"}
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "ArgoCD 앱 {{ $labels.name }}가 10분 넘게 Degraded"
+            description: 배포된 리소스가 정상이 아니다. make argocd-ui 또는 kubectl describe로 원인 리소스를 찾는다.
+        - alert: ArgoCDAppOutOfSync
+          # 2026-11-17 controller OOM 교착 때 argocd·monitoring이 이 상태로 멈췄다
+          expr: argocd_app_info{sync_status="OutOfSync"}
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "ArgoCD 앱 {{ $labels.name }}이 15분 넘게 OutOfSync"
+            description: Git과 클러스터가 다르다. 자동 동기화가 막혔거나(훅·controller 상태) 누가 직접 바꿨다.
