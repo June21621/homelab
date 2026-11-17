@@ -12,6 +12,9 @@ ARGOCD_APP=gitops/root/argocd.yaml
 ROOT_APP=gitops/root/root.yaml
 ARGOCD_VALUES=gitops/platform/argocd/values.yaml
 BOOTSTRAP_TF=terraform/argocd-bootstrap/main.tf
+MONITORING_APP=gitops/root/monitoring.yaml
+MONITORING_VALUES=gitops/platform/monitoring/values.yaml
+MONITORING_RULES=gitops/platform/monitoring/rules
 
 fails=0
 check() {  # check <설명> <명령...>
@@ -70,11 +73,43 @@ argocd_render_ok() {
   uv run --quiet --script scripts/check_rendered.py argocd <<<"${out}"
 }
 
+# monitoring Application의 Helm 소스(chart: kube-prometheus-stack)에 적힌 차트 버전
+monitoring_chart_version() {
+  awk '/chart: kube-prometheus-stack/ { f = 1 } f && /targetRevision:/ { print $2; exit }' "${MONITORING_APP}"
+}
+
+render_monitoring() {
+  local version
+  version="$(monitoring_chart_version)"
+  [[ -n "${version}" ]] || return 1
+  helm template monitoring kube-prometheus-stack --repo https://prometheus-community.github.io/helm-charts \
+    --version "${version}" --namespace monitoring --kube-version 1.36.5 -f "${MONITORING_VALUES}"
+}
+
+monitoring_render_ok() {
+  local out
+  out="$(render_monitoring)" || return 1
+  uv run --quiet --script scripts/check_rendered.py monitoring <<<"${out}"
+}
+
+monitoring_checks() {
+  # 6-2 전에는 monitoring 앱이 없다. CI에는 age 키·ksops가 없어 Kustomize(KSOPS)는 렌더링하지 않는다(설계 §3.8)
+  if [[ ! -f "${MONITORING_APP}" ]]; then
+    echo "SKIP  monitoring 차트 렌더링 (${MONITORING_APP} 없음)"
+    return
+  fi
+  check "monitoring 차트 렌더링: 제한·끈 수집·끈 규칙·URL은 파일로·Watchdog 1분" monitoring_render_ok
+}
+
 static_checks() {
+  check "검사기 check_rendered.py 테스트" uv run --quiet --script scripts/test_check_rendered.py
+  check "검사기 check-prom-rules.sh 테스트" bash scripts/test-check-prom-rules.sh
+  check "직접 만든 알림 규칙: 문법·severity 라벨·단위 테스트" bash scripts/check-prom-rules.sh "${MONITORING_RULES}"
+  monitoring_checks
   check "Terraform이 차트 버전·values·루트 앱을 gitops/에서 읽음" tf_reads_single_source
   check "argo-cd 차트 렌더링: 끈 컴포넌트 없음, 모든 컨테이너 limits" argocd_render_ok
   check "루트 앱: gitops/root를 main에서 자동 동기화(prune·selfHeal)" root_app_ok
-  check "서비스 앱은 finalizer 있음, argocd·root는 없음" apps_finalizer_ok
+  check "서비스 앱은 finalizer 있음, argocd·root·monitoring은 없음" apps_finalizer_ok
   check "portfolio prod: 제한·보안 설정·SHA 태그·Namespace, chaos 꺼짐" app_overlay_ok portfolio prod app-prod
   check "portfolio lab: 제한·보안 설정·SHA 태그·Namespace, chaos 켜짐" app_overlay_ok portfolio lab app-lab
   check "bump-tag.sh: newTag·digest 두 줄만 바꾸고 잘못된 입력은 거부" bash scripts/test-bump-tag.sh

@@ -8,6 +8,7 @@
 통과하면 0, 아니면 위반 목록을 출력하고 1.
 """
 
+import base64
 import re
 import sys
 
@@ -123,8 +124,9 @@ def check_app(docs, chaos):
 
 
 FINALIZER = "resources-finalizer.argocd.argoproj.io"
-# 지우면 ArgoCD 자신이 통째로 삭제되므로 finalizer를 달면 안 되는 앱
-PROTECTED_APPS = {"argocd", "root"}
+# finalizer를 달면 안 되는 플랫폼 앱. argocd·root: 지우면 ArgoCD 자신이 통째로 삭제됨.
+# monitoring: 지우면 prometheus-operator CRD와 함께 모든 ServiceMonitor·PrometheusRule·지표 데이터가 사라짐 (6단계 §3.2)
+PROTECTED_APPS = {"argocd", "root", "monitoring"}
 
 
 def check_apps(docs):
@@ -141,8 +143,109 @@ def check_apps(docs):
     return errors
 
 
+# --- monitoring (kube-prometheus-stack, 6단계 설계 §3) ---
+
+# operator가 StatefulSet으로 펼치는 CR. helm template 결과에는 워크로드가 아니라 CR로 나온다
+MONITORING_CRS = {"Prometheus", "Alertmanager"}
+# k3s는 이것들을 k3s server 한 프로세스에 넣어 따로 수집할 주소가 없다 (§3.1)
+DISABLED_SCRAPE = ("kube-etcd", "kube-scheduler", "kube-controller-manager", "kube-proxy")
+# k3s에 안 맞거나(오탐) 단일 노드에 쓸모없는(API SLO) 기본 규칙 그룹 (§3.4)
+DISABLED_RULE_GROUP = re.compile(
+    r"^(etcd|kube-scheduler|kubernetes-system-(controller-manager|scheduler|kube-proxy)"
+    r"|kube-apiserver-(burnrate|histogram|slos|availability)|windows)"
+)
+# 비밀값은 KSOPS Secret을 파일로 마운트해 경로로만 참조한다 (§3.3)
+RECEIVER_FILES = {
+    ("discord_configs", "webhook_url_file"): "/etc/alertmanager/secrets/alertmanager-receivers/discord-webhook-url",
+    ("webhook_configs", "url_file"): "/etc/alertmanager/secrets/alertmanager-receivers/healthchecks-ping-url",
+}
+URL_KEYS = {"discord_configs": "webhook_url", "webhook_configs": "url"}
+WATCHDOG_TIMING = {"group_wait": "0s", "group_interval": "1m", "repeat_interval": "1m"}
+
+
+def custom_resources(docs):
+    return [d for d in docs if d.get("kind") in MONITORING_CRS]
+
+
+def check_cr_resources(docs):
+    errors = []
+    for d in custom_resources(docs):
+        where = f"{d['kind']}/{d['metadata']['name']}"
+        spec = d.get("spec") or {}
+        if not ((spec.get("resources") or {}).get("limits") or {}).get("memory"):
+            errors.append(f"{where}: spec.resources.limits.memory 없음")
+        # spec.containers는 operator가 만드는 컨테이너(사이드카 포함)를 덮어쓴다. 덮어쓸 때도 제한 필요
+        for c in spec.get("containers") or []:
+            res = c.get("resources") or {}
+            if not (res.get("limits") or {}).get("memory"):
+                errors.append(f"{where}/{c['name']}: limits.memory 없음")
+    return errors
+
+
+def alertmanager_config(docs):
+    for d in docs:
+        if d.get("kind") == "Secret" and "alertmanager.yaml" in (d.get("data") or {}):
+            return yaml.safe_load(base64.b64decode(d["data"]["alertmanager.yaml"]))
+    return None
+
+
+def walk_routes(route):
+    yield route
+    for child in route.get("routes") or []:
+        yield from walk_routes(child)
+
+
+def is_watchdog(route):
+    matchers = " ".join(route.get("matchers") or [])
+    return "Watchdog" in matchers or (route.get("match") or {}).get("alertname") == "Watchdog"
+
+
+def check_alertmanager(cfg):
+    if cfg is None:
+        return ["alertmanager.yaml을 담은 Secret이 없음"]
+    errors = []
+    for r in cfg.get("receivers") or []:
+        for kind, url_key in URL_KEYS.items():
+            for conf in r.get(kind) or []:
+                if url_key in conf:
+                    errors.append(f"receiver {r['name']}: {kind}.{url_key}에 URL을 직접 쓰면 안 됨 (*_file 사용)")
+                file_key = next(fk for (k, fk) in RECEIVER_FILES if k == kind)
+                want = RECEIVER_FILES[(kind, file_key)]
+                if conf.get(file_key) != want:
+                    errors.append(f"receiver {r['name']}: {kind}.{file_key}는 {want}")
+    text = yaml.safe_dump(cfg)
+    for literal in ("discord.com", "hc-ping.com", "https://"):
+        if literal in text:
+            errors.append(f"Alertmanager 설정에 URL 리터럴 '{literal}'")
+    watchdog = [r for r in walk_routes(cfg.get("route") or {}) if is_watchdog(r)]
+    if not watchdog:
+        errors.append("Watchdog route 없음 (healthchecks.io 핑)")
+    for r in watchdog:
+        for key, want in WATCHDOG_TIMING.items():
+            if r.get(key) != want:
+                errors.append(f"Watchdog route: {key}는 {want} (지금 {r.get(key)})")
+    return errors
+
+
+def check_monitoring(docs):
+    errors = check_resources(docs) + check_cr_resources(docs)
+    for d in docs:
+        name = d.get("metadata", {}).get("name", "")
+        if d.get("kind") in ("Service", "ServiceMonitor") and any(t in name for t in DISABLED_SCRAPE):
+            errors.append(f"끈 수집 대상이 있음: {d['kind']}/{name}")
+        if d.get("kind") == "PrometheusRule":
+            for g in (d.get("spec") or {}).get("groups") or []:
+                if DISABLED_RULE_GROUP.match(g.get("name", "")):
+                    errors.append(f"끈 기본 규칙 그룹이 있음: {g['name']} ({name})")
+    for p in (d for d in docs if d.get("kind") == "Prometheus"):
+        if (p.get("spec") or {}).get("retention") != "7d":
+            errors.append(f"Prometheus/{p['metadata']['name']}: retention은 7d")
+    return errors + check_alertmanager(alertmanager_config(docs))
+
+
 CHECKS = {
     "argocd": check_argocd,
+    "monitoring": check_monitoring,
     "root": check_root,
     "apps": check_apps,
     "app-prod": lambda docs: check_app(docs, chaos=False),
