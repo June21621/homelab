@@ -94,6 +94,12 @@ jobs:
           SKIP: ansible-lint
         run: uvx pre-commit@4.6.2 run --all-files --show-diff-on-failure
 
+      # 알림 규칙 검사용. 관리 PC와 같은 스크립트·버전(릴리스 sha256sums.txt로 검증)
+      - name: promtool·amtool 설치
+        run: |
+          bash scripts/install-prom-tools.sh "${RUNNER_TEMP}/bin"
+          echo "${RUNNER_TEMP}/bin" >> "${GITHUB_PATH}"
+
       - name: 정적 검사 (렌더링·정책·bump-tag 테스트)
         run: bash scripts/verify-argocd.sh --static
 

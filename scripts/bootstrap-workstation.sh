@@ -135,6 +135,11 @@ if [[ "$(aws --version 2>/dev/null | sed -E 's#^aws-cli/([0-9.]+).*#\1#')" != "$
   rm -rf "${awstmp}"
 fi
 
+# --- promtool·amtool (알림 규칙·Alertmanager 설정 검사, 버전은 install-prom-tools.sh) ---
+# 사용자 영역(~/.local/bin)에 설치해 sudo가 필요 없다. CI(static-checks)도 같은 스크립트를 쓴다
+log "promtool·amtool"
+bash "$(dirname "$0")/install-prom-tools.sh" "${HOME}/.local/bin"
+
 # --- 결과 -------------------------------------------------------------------
 log "설치 결과"
 # head -1은 첫 줄만 읽고 먼저 끝나 앞 명령이 SIGPIPE(141)로 죽을 수 있다(pipefail이면 스크립트 실패).
@@ -150,6 +155,8 @@ ansible --version | sed -n 1p
 ansible-lint --version | sed -n 1p
 pre-commit --version
 aws --version
+promtool --version | sed -n 1p
+amtool --version 2>&1 | sed -n 1p
 
 if ! grep -q '.local/bin' "${HOME}/.bashrc" 2>/dev/null && [[ ":${PATH}:" != *":${HOME}/.local/bin:"* ]]; then
   echo
