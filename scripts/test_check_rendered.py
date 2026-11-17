@@ -168,5 +168,19 @@ def test_monitoring_app_no_finalizer():
     assert cr.check_apps([app]) == []
 
 
+def test_argocd_has_no_servicemonitor():
+    """ArgoCD 차트는 ServiceMonitor를 만들면 안 된다: Terraform이 같은 values로 빈 클러스터(CRD 없음)에 설치한다 (§3.6)"""
+    sm = {"kind": "ServiceMonitor", "metadata": {"name": "argocd-application-controller"}}
+    errors = cr.check_argocd([sm])
+    assert any("ServiceMonitor" in e for e in errors), errors
+
+
+def test_argocd_metrics_services_required():
+    """지표 수집(6-3b)은 ArgoCD 차트가 만든 지표 Service를 고른다"""
+    errors = cr.check_argocd([])
+    for name in cr.ARGOCD_METRICS_SERVICES:
+        assert any(name in e for e in errors), errors
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-q"]))

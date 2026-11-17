@@ -26,7 +26,18 @@ controller:             # Git 상태와 클러스터 상태를 비교·동기화
   resources:
     requests: { cpu: 100m, memory: 384Mi }
     limits: { memory: 1Gi }
+  # 지표 Service만 만든다(argocd_app_info·argocd_app_sync_total, 6단계 §3.6).
+  # ServiceMonitor는 끈다: Terraform이 이 values로 CRD가 없는 빈 클러스터에 설치하면 실패한다.
+  # 수집 설정은 gitops/platform/monitoring/argocd-servicemonitors.yaml(monitoring 앱)에 있다
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: false
 repoServer:             # Git을 받아 Helm·Kustomize로 렌더링
+  metrics:              # controller와 같은 이유로 Service만
+    enabled: true
+    serviceMonitor:
+      enabled: false
   resources:
     requests: { cpu: 50m, memory: 128Mi }
     limits: { memory: 512Mi }
@@ -59,6 +70,10 @@ repoServer:             # Git을 받아 Helm·Kustomize로 렌더링
     - name: SOPS_AGE_KEY_FILE
       value: /sops-age/keys.txt
 server:                 # 웹 UI·API (외부 노출 없음)
+  metrics:              # controller와 같은 이유로 Service만
+    enabled: true
+    serviceMonitor:
+      enabled: false
   resources:
     requests: { cpu: 25m, memory: 64Mi }
     limits: { memory: 256Mi }
