@@ -40,8 +40,25 @@ def check_resources(docs):
     return errors
 
 
+# 6-3a: 지표 Service만 켠다. ServiceMonitor는 monitoring 앱이 만든다 (6단계 설계 §3.6)
+ARGOCD_METRICS_SERVICES = ("argocd-application-controller-metrics", "argocd-server-metrics", "argocd-repo-server-metrics")
+
+
+def check_argocd_metrics(docs):
+    errors = []
+    # Terraform argocd-bootstrap이 같은 values로 빈 클러스터에 설치한다. ServiceMonitor CRD가 없어 첫 apply가 실패한다
+    for d in docs:
+        if d.get("kind") == "ServiceMonitor":
+            errors.append(f"ServiceMonitor/{d['metadata']['name']}: ArgoCD 차트에서 만들면 안 됨 (빈 클러스터 재구축 실패)")
+    services = {d["metadata"]["name"] for d in docs if d.get("kind") == "Service"}
+    for name in ARGOCD_METRICS_SERVICES:
+        if name not in services:
+            errors.append(f"지표 Service {name} 없음 (metrics.enabled)")
+    return errors
+
+
 def check_argocd(docs):
-    errors = check_resources(docs)
+    errors = check_resources(docs) + check_argocd_metrics(docs)
     for w in workloads(docs):
         name = w["metadata"]["name"]
         # applicationset은 차트에 끄는 옵션이 없어 replicas 0으로 끈다 (파드 없음 = 메모리 0)
