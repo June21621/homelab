@@ -46,4 +46,9 @@ ArgoCD는 클러스터 안의 모든 것을 Git으로 관리하지만, ArgoCD �
   1. 원인이 Git 변경이면 먼저 `git revert`(main 보호 때문에 PR로)
   2. 그래도 안 되면 관리 PC에서 `terraform apply -replace=helm_release.argocd`로 Git의 values 그대로 재설치
   - 9단계 장애 검증에서 실제로 해 본다
+  - **실제로 겪음(2026-11-17)**: monitoring 앱 첫 동기화 중 controller(512Mi)가 OOM으로 죽어, 자기 limits를 1Gi로 올리는
+    Git 변경을 적용하지 못하는 교착에 빠졌다. revert로는 풀리지 않는 경우(원인이 controller 자신의 자원)라
+    **Git과 같은 값을 `kubectl patch`로 한 번 넣고**, 옛 리비전에서 CrashLoop 중인 StatefulSet 파드를 지워 복구했다(약 7분).
+    값이 Git과 같아 selfHeal과 충돌하지 않는다. 상세: `docs/verification/2026-11-17-monitoring-alerts.md` §2, ADR 0010
+- 기반 메모리 갱신: controller limits 512Mi → 1Gi(requests 384Mi). monitoring 추가 후 평소 약 400~500Mi
 - ArgoCD 차트 업그레이드는 ArgoCD가 자기 자신을 재시작하며 적용한다. 그 사이 다른 앱 동기화가 잠시 멈춘다

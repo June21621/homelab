@@ -25,8 +25,10 @@ for _ in $(seq 1 20); do
 done
 curl -fsS "${API}/status" >/dev/null || { echo "Alertmanager에 연결하지 못함 (port-forward)" >&2; exit 1; }
 
+# API에는 UTC(…Z)로 보낸다. 사람에게는 한국 시간도 같이 보여 준다(검증 기록은 KST로 쓴다)
 now() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 later() { date -u -d "+$1 minutes" +%Y-%m-%dT%H:%M:%SZ; }
+kst() { TZ=Asia/Seoul date -d "${1:-now}" '+%H:%M:%S KST'; }
 
 case "$1" in
   fire)
@@ -34,15 +36,15 @@ case "$1" in
       \"labels\": {\"alertname\": \"HomelabTestAlert\", \"severity\": \"warning\", \"namespace\": \"monitoring\"},
       \"annotations\": {\"summary\": \"테스트 알림 (scripts/alert-test.sh)\", \"description\": \"5분 뒤 해결 알림이 와야 한다\"},
       \"startsAt\": \"$(now)\", \"endsAt\": \"$(later 5)\"}]"
-    echo "보냄 $(now): HomelabTestAlert(warning). group_wait 30초 뒤 Discord, 5분 뒤 해결 알림"
+    echo "보냄 $(kst) ($(now)): HomelabTestAlert(warning). group_wait 30초 뒤 Discord, 5분 뒤($(kst '+5 minutes')) 해결 알림"
     ;;
   silence-watchdog)
     id="$(curl -fsS -X POST "${API}/silences" -H 'Content-Type: application/json' -d "{
       \"matchers\": [{\"name\": \"alertname\", \"value\": \"Watchdog\", \"isRegex\": false, \"isEqual\": true}],
       \"startsAt\": \"$(now)\", \"endsAt\": \"$(later 30)\",
       \"createdBy\": \"alert-test.sh\", \"comment\": \"감시자 감시 확인 (6단계 확인 기준 4)\"}")"
-    echo "Watchdog 일시 정지 $(now) ~ 30분 ${id}"
-    echo "healthchecks.io(Period 5분 + Grace 10분) 이메일이 오는 시각을 기록하세요. 30분 뒤 자동 해제"
+    echo "Watchdog 일시 정지 $(kst) ($(now)) ~ $(kst '+30 minutes') ${id}"
+    echo "healthchecks.io DOWN 이메일 예상 $(kst '+15 minutes') 무렵(Period 5분 + Grace 10분), 자동 해제 뒤 UP 이메일"
     ;;
   *) usage ;;
 esac

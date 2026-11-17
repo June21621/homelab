@@ -14,3 +14,4 @@
 | [0007](0007-gitops-location-and-tag-path.md) | gitops는 homelab 안에, 배포 태그는 봇 PR + 검사 통과 시 자동 병합 | 채택 |
 | [0008](0008-ksops-cluster-age-key.md) | 클러스터 시크릿은 KSOPS + 클러스터 전용 age 키 | 채택 |
 | [0009](0009-argocd-self-management.md) | ArgoCD는 Terraform으로 한 번 설치하고, 이후엔 자기 자신을 Git으로 관리 | 채택 |
+| [0010](0010-internal-external-observability.md) | 관측은 안(Prometheus)과 밖(CloudWatch)으로 나누고, Watchdog으로 감시자를 감시한다 | 채택 |
