@@ -72,9 +72,23 @@ def apiserver_sm(relabelings):
             "spec": {"endpoints": [{"port": "https", "metricRelabelings": relabelings}]}}
 
 
+KUBELET_DEDUP = {"action": "drop", "sourceLabels": ["__name__"], "regex": "(apiserver|etcd)_.+"}
+CHART_KUBELET_DEFAULT = {"action": "drop", "sourceLabels": ["__name__", "le"],
+                         "regex": "(csi_operations|storage_operation_duration)_seconds_bucket;(0.25|2.5|15|25|120|600)(\\.0)?"}
+
+
+def kubelet_sm(relabelings):
+    return {"kind": "ServiceMonitor", "metadata": {"name": "monitoring-kube-prometheus-kubelet"},
+            "spec": {"endpoints": [
+                {"port": "https-metrics", "path": "/metrics", "metricRelabelings": relabelings},
+                {"port": "https-metrics", "path": "/metrics/cadvisor", "metricRelabelings": []},
+            ]}}
+
+
 def good_docs(cfg=None):
     return [
         apiserver_sm([HISTOGRAM_DROP]),
+        kubelet_sm([CHART_KUBELET_DEFAULT, KUBELET_DEDUP]),
         {"kind": "Prometheus", "metadata": {"name": "monitoring-kube-prometheus-prometheus"},
          "spec": {"retention": "7d", "resources": RES}},
         {"kind": "Alertmanager", "metadata": {"name": "monitoring-kube-prometheus-alertmanager"},
@@ -197,8 +211,39 @@ def test_apiserver_histograms_dropped(relabelings):
 
 
 def test_apiserver_servicemonitor_missing():
-    docs = [d for d in good_docs() if d["kind"] != "ServiceMonitor"]
+    docs = [d for d in good_docs() if d["metadata"]["name"] != "monitoring-kube-prometheus-apiserver"]
     assert any("apiserver" in e for e in cr.check_monitoring(docs))
+
+
+def without_kubelet(docs):
+    return [d for d in docs if d["metadata"]["name"] != "monitoring-kube-prometheus-kubelet"]
+
+
+@pytest.mark.parametrize("relabelings", [
+    [CHART_KUBELET_DEFAULT],  # 중복 drop 없음
+    [CHART_KUBELET_DEFAULT, {**KUBELET_DEDUP, "regex": "apiserver_.+"}],  # etcd_ 중복이 남음
+    [CHART_KUBELET_DEFAULT, {**KUBELET_DEDUP, "action": "keep"}],
+])
+def test_kubelet_duplicates_dropped(relabelings):
+    """k3s는 kubelet 지표 주소가 같은 프로세스의 apiserver_·etcd_ 지표까지 내보낸다 → kubelet 쪽 사본은 버린다(원본은 apiserver job)"""
+    docs = without_kubelet(good_docs()) + [kubelet_sm(relabelings)]
+    errors = cr.check_monitoring(docs)
+    assert any("중복" in e for e in errors), errors
+
+
+def test_kubelet_dedup_keeps_kubelet_metrics():
+    """너무 넓게 버리면 kubelet 고유 지표(노드·파드 상태)까지 사라진다"""
+    wide = {**KUBELET_DEDUP, "regex": ".+"}
+    docs = without_kubelet(good_docs()) + [kubelet_sm([CHART_KUBELET_DEFAULT, wide])]
+    errors = cr.check_monitoring(docs)
+    assert any("kubelet 고유" in e for e in errors), errors
+
+
+def test_kubelet_chart_default_drop_kept():
+    """kubelet metricRelabelings를 values에 쓰면 차트 기본 목록을 대체한다 → 기본 drop(저장소 작업 히스토그램)도 함께 있어야 함"""
+    docs = without_kubelet(good_docs()) + [kubelet_sm([KUBELET_DEDUP])]
+    errors = cr.check_monitoring(docs)
+    assert any("csi_operations" in e for e in errors), errors
 
 
 def test_argocd_has_no_servicemonitor():

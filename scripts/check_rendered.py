@@ -270,8 +270,41 @@ def check_apiserver_drop(docs):
             for n in DROPPED_HISTOGRAMS if not any(p.fullmatch(n) for p in drops)]
 
 
+# k3s는 API 서버·kubelet·etcd가 한 프로세스(k3s server)라 kubelet 지표 주소(/metrics)가 apiserver_·etcd_ 지표까지 내보낸다.
+# 원본은 apiserver job에 있으니 kubelet 쪽 사본은 버린다(2026-11-18 실측: kubelet job 61,746 중 중복 51,103)
+KUBELET_DUPLICATES = ("apiserver_request_total", "apiserver_watch_events_total",
+                      "etcd_request_duration_seconds_bucket", "etcd_bookmark_counts")
+KUBELET_OWN = ("kubelet_running_pods", "kubelet_volume_stats_used_bytes", "workqueue_depth",
+               "process_cpu_seconds_total", "csi_operations_seconds_bucket")
+# 차트가 kubelet /metrics에 기본으로 넣는 drop. values에 metricRelabelings를 쓰면 이 목록이 대체되므로 함께 있어야 한다
+CHART_KUBELET_DEFAULT_REGEX = "(csi_operations|storage_operation_duration)_seconds_bucket"
+
+
+def name_drops(relabelings):
+    return [re.compile(r["regex"]) for r in relabelings or []
+            if r.get("action") == "drop" and r.get("sourceLabels") == ["__name__"]]
+
+
+def check_kubelet_dedup(docs):
+    sms = [d for d in docs if d.get("kind") == "ServiceMonitor" and d["metadata"]["name"].endswith("-kubelet")]
+    if not sms:
+        return ["kubelet ServiceMonitor 없음"]
+    eps = [ep for ep in sms[0]["spec"].get("endpoints") or [] if ep.get("path", "/metrics") == "/metrics"]
+    if not eps:
+        return ["kubelet /metrics 수집 설정 없음"]
+    rels = eps[0].get("metricRelabelings") or []
+    drops = name_drops(rels)
+    errors = [f"kubelet 쪽 중복 {n}을 버리지 않음 (원본은 apiserver job)"
+              for n in KUBELET_DUPLICATES if not any(p.fullmatch(n) for p in drops)]
+    errors += [f"kubelet 고유 지표 {n}까지 버림 (drop 정규식이 너무 넓음)"
+               for n in KUBELET_OWN if any(p.fullmatch(n) for p in drops)]
+    if not any(CHART_KUBELET_DEFAULT_REGEX in (r.get("regex") or "") for r in rels):
+        errors.append(f"차트 기본 kubelet drop({CHART_KUBELET_DEFAULT_REGEX})이 빠짐 — values가 기본 목록을 대체함")
+    return errors
+
+
 def check_monitoring(docs):
-    errors = check_resources(docs) + check_cr_resources(docs) + check_apiserver_drop(docs)
+    errors = check_resources(docs) + check_cr_resources(docs) + check_apiserver_drop(docs) + check_kubelet_dedup(docs)
     for d in docs:
         name = d.get("metadata", {}).get("name", "")
         if d.get("kind") in ("Service", "ServiceMonitor") and any(t in name for t in DISABLED_SCRAPE):

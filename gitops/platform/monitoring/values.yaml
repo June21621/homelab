@@ -45,6 +45,21 @@ kubeApiServer:
         sourceLabels: [__name__]
         regex: (apiserver_request_duration_seconds|apiserver_request_sli_duration_seconds|apiserver_request_body_size_bytes|apiserver_response_sizes|apiserver_watch_list_duration_seconds|apiserver_watch_cache_read_wait_seconds|etcd_request_duration_seconds)_bucket
 
+# --- kubelet 쪽 중복 사본은 버린다 (6-4c) ---
+# k3s는 API 서버·kubelet·etcd가 k3s server 한 프로세스라, kubelet 지표 주소(:10250/metrics)가 apiserver_·etcd_ 지표까지 내보낸다.
+# 같은 지표를 apiserver job과 kubelet job에서 두 번 저장하고 있었다(2026-11-18 실측: kubelet job 61,746 중 중복 51,103).
+# 원본은 apiserver job에 남는다. API 서버 규칙은 모두 job="apiserver"를 본다
+kubelet:
+  serviceMonitor:
+    metricRelabelings:
+      # 차트 기본값(저장소 작업 히스토그램 일부 구간). 여기에 목록을 쓰면 기본값이 대체되므로 그대로 옮겨 둔다
+      - action: drop
+        sourceLabels: [__name__, le]
+        regex: (csi_operations|storage_operation_duration)_seconds_bucket;(0.25|2.5|15|25|120|600)(\.0)?
+      - action: drop
+        sourceLabels: [__name__]
+        regex: (apiserver|etcd)_.+
+
 # --- Prometheus ---
 prometheus:
   prometheusSpec:
