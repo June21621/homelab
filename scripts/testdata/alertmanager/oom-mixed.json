@@ -1,0 +1,24 @@
+{
+  "receiver": "discord",
+  "status": "firing",
+  "alerts": [
+    {
+      "status": "firing",
+      "labels": {"alertname": "ContainerOOMKilled", "container": "grafana-sc-dashboard", "namespace": "monitoring", "pod": "monitoring-grafana-58967c8fc-2zssf", "reason": "OOMKilled", "severity": "warning"},
+      "annotations": {"summary": "monitoring/monitoring-grafana-58967c8fc-2zssf (grafana-sc-dashboard) 메모리 초과로 종료됨", "description": "limits.memory를 넘었다. kubectl top·describe로 사용량과 제한을 비교한다."},
+      "startsAt": "2026-11-17T05:35:50Z",
+      "endsAt": "0001-01-01T00:00:00Z"
+    },
+    {
+      "status": "resolved",
+      "labels": {"alertname": "ContainerOOMKilled", "container": "grafana", "namespace": "monitoring", "pod": "monitoring-grafana-58967c8fc-2zssf", "reason": "OOMKilled", "severity": "warning"},
+      "annotations": {"summary": "monitoring/monitoring-grafana-58967c8fc-2zssf (grafana) 메모리 초과로 종료됨", "description": "limits.memory를 넘었다. kubectl top·describe로 사용량과 제한을 비교한다."},
+      "startsAt": "2026-11-17T05:35:50Z",
+      "endsAt": "2026-11-17T05:57:10Z"
+    }
+  ],
+  "groupLabels": {"alertname": "ContainerOOMKilled", "namespace": "monitoring"},
+  "commonLabels": {"alertname": "ContainerOOMKilled", "namespace": "monitoring", "pod": "monitoring-grafana-58967c8fc-2zssf", "reason": "OOMKilled", "severity": "warning"},
+  "commonAnnotations": {"description": "limits.memory를 넘었다. kubectl top·describe로 사용량과 제한을 비교한다."},
+  "externalURL": "http://monitoring-kube-prometheus-alertmanager.monitoring:9093"
+}

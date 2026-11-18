@@ -1,0 +1,5 @@
+🔥 ContainerOOMKilled · warning · 2건
+---
+• monitoring/monitoring-grafana-58967c8fc-2zssf (grafana-sc-dashboard) 메모리 초과로 종료됨 · 14:35
+• monitoring/monitoring-grafana-58967c8fc-2zssf (grafana-sc-datasources) 메모리 초과로 종료됨 · 14:36
+조치: limits.memory를 넘었다. kubectl top·describe로 사용량과 제한을 비교한다.

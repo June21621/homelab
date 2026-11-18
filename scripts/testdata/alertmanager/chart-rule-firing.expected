@@ -1,0 +1,4 @@
+🔥 KubePodCrashLooping · warning · 1건
+---
+• Pod monitoring/monitoring-grafana-58967c8fc-2zssf (grafana-sc-dashboard) is in waiting state (reason: "CrashLoopBackOff") on cluster . · 14:42
+참고: https://runbooks.prometheus-operator.dev/runbooks/kubernetes/kubepodcrashlooping

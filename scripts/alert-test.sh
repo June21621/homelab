@@ -34,7 +34,7 @@ case "$1" in
   fire)
     curl -fsS -X POST "${API}/alerts" -H 'Content-Type: application/json' -d "[{
       \"labels\": {\"alertname\": \"HomelabTestAlert\", \"severity\": \"warning\", \"namespace\": \"monitoring\"},
-      \"annotations\": {\"summary\": \"테스트 알림 (scripts/alert-test.sh)\", \"description\": \"5분 뒤 해결 알림이 와야 한다\"},
+      \"annotations\": {\"summary\": \"테스트 알림 (scripts/alert-test.sh)\", \"description\": \"테스트라 할 일 없음. 5분 뒤 해결 알림이 와야 한다\"},
       \"startsAt\": \"$(now)\", \"endsAt\": \"$(later 5)\"}]"
     echo "보냄 $(kst) ($(now)): HomelabTestAlert(warning). group_wait 30초 뒤 Discord, 5분 뒤($(kst '+5 minutes')) 해결 알림"
     ;;

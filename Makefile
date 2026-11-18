@@ -6,7 +6,7 @@ SHELL := /usr/bin/env bash
 export ANSIBLE_CONFIG := $(CURDIR)/ansible/ansible.cfg
 
 .PHONY: help workstation hooks lint deps agent host host-check kubeconfig verify-k3s etcd-restore \
-	argocd-bootstrap verify-argocd argocd-ui github-plan github-apply grafana-ui alert-test
+	argocd-bootstrap verify-argocd argocd-ui github-plan github-apply grafana-ui prometheus-ui alertmanager-ui alert-test
 
 ANSIBLE := cd ansible && ansible-playbook
 TF_ARGOCD := terraform -chdir=terraform/argocd-bootstrap
@@ -72,6 +72,16 @@ grafana-ui: ## Grafana 웹 UI 터널 (사용자 admin, 비밀번호는 Bitwarden
 	@ip="$$(hostname -I | awk '{print $$1}')"; \
 	echo "Windows 브라우저: http://$${ip}:3000   (WSL 안: http://localhost:3000)"; \
 	KUBECONFIG=$(HOME)/.kube/homelab.yaml kubectl -n monitoring port-forward --address "127.0.0.1,$${ip}" svc/monitoring-grafana 3000:80
+
+prometheus-ui: ## Prometheus 웹 UI 터널 (규칙 상태 Alerts, 수집 대상 Status → Targets, Ctrl+C로 종료)
+	@ip="$$(hostname -I | awk '{print $$1}')"; \
+	echo "Windows 브라우저: http://$${ip}:9090   (WSL 안: http://localhost:9090)"; \
+	KUBECONFIG=$(HOME)/.kube/homelab.yaml kubectl -n monitoring port-forward --address "127.0.0.1,$${ip}" svc/monitoring-kube-prometheus-prometheus 9090:9090
+
+alertmanager-ui: ## Alertmanager 웹 UI 터널 (묶인 알림·silence 확인, Ctrl+C로 종료)
+	@ip="$$(hostname -I | awk '{print $$1}')"; \
+	echo "Windows 브라우저: http://$${ip}:9093   (WSL 안: http://localhost:9093)"; \
+	KUBECONFIG=$(HOME)/.kube/homelab.yaml kubectl -n monitoring port-forward --address "127.0.0.1,$${ip}" svc/monitoring-kube-prometheus-alertmanager 9093:9093
 
 alert-test: ## Alertmanager 테스트 (CMD=fire: 가짜 알림 → Discord / CMD=silence-watchdog: 감시자 감시 확인)
 	@test -n "$(CMD)" || { echo "CMD=fire 또는 CMD=silence-watchdog" >&2; exit 1; }

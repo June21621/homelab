@@ -1,0 +1,17 @@
+{
+  "receiver": "discord",
+  "status": "firing",
+  "alerts": [
+    {
+      "status": "firing",
+      "labels": {"alertname": "KubePodCrashLooping", "container": "grafana-sc-dashboard", "job": "kube-state-metrics", "namespace": "monitoring", "pod": "monitoring-grafana-58967c8fc-2zssf", "reason": "CrashLoopBackOff", "severity": "warning"},
+      "annotations": {"description": "Pod monitoring/monitoring-grafana-58967c8fc-2zssf (grafana-sc-dashboard) is in waiting state (reason: \"CrashLoopBackOff\") on cluster .", "runbook_url": "https://runbooks.prometheus-operator.dev/runbooks/kubernetes/kubepodcrashlooping", "summary": "Pod is crash looping."},
+      "startsAt": "2026-11-17T05:42:08Z",
+      "endsAt": "0001-01-01T00:00:00Z"
+    }
+  ],
+  "groupLabels": {"alertname": "KubePodCrashLooping", "namespace": "monitoring"},
+  "commonLabels": {"alertname": "KubePodCrashLooping", "namespace": "monitoring", "severity": "warning"},
+  "commonAnnotations": {"summary": "Pod is crash looping."},
+  "externalURL": "http://monitoring-kube-prometheus-alertmanager.monitoring:9093"
+}

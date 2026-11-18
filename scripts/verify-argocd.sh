@@ -103,6 +103,17 @@ monitoring_am_config_ok() {
   return "${rc}"
 }
 
+# Discord 알림 문구: 실제 받았던 알림으로 제목·본문 기대값 비교
+monitoring_am_templates_ok() {
+  local out dir rc=0
+  out="$(render_monitoring)" || return 1
+  dir="$(mktemp -d)"
+  uv run --quiet --script scripts/am_config_for_check.py "${dir}" <<<"${out}" &&
+    bash scripts/test-am-templates.sh "${dir}/templates" || rc=1
+  rm -rf "${dir}"
+  return "${rc}"
+}
+
 monitoring_checks() {
   # 6-2 전에는 monitoring 앱이 없다. CI에는 age 키·ksops가 없어 Kustomize(KSOPS)는 렌더링하지 않는다(설계 §3.8)
   if [[ ! -f "${MONITORING_APP}" ]]; then
@@ -111,6 +122,7 @@ monitoring_checks() {
   fi
   check "monitoring 차트 렌더링: 제한·끈 수집·끈 규칙·URL은 파일로·Watchdog 1분" monitoring_render_ok
   check "monitoring Alertmanager 설정: amtool check-config" monitoring_am_config_ok
+  check "Discord 알림 문구: 실제 알림 5종의 제목·본문" monitoring_am_templates_ok
 }
 
 static_checks() {

@@ -1,0 +1,24 @@
+{
+  "receiver": "discord",
+  "status": "firing",
+  "alerts": [
+    {
+      "status": "firing",
+      "labels": {"alertname": "ContainerOOMKilled", "container": "grafana-sc-dashboard", "endpoint": "http", "instance": "10.42.0.43:8080", "job": "kube-state-metrics", "namespace": "monitoring", "pod": "monitoring-grafana-58967c8fc-2zssf", "prometheus": "monitoring/monitoring-kube-prometheus-prometheus", "reason": "OOMKilled", "service": "monitoring-kube-state-metrics", "severity": "warning", "uid": "d0a236c6-76dd-4446-a5a5-041dea2e07f4"},
+      "annotations": {"summary": "monitoring/monitoring-grafana-58967c8fc-2zssf (grafana-sc-dashboard) 메모리 초과로 종료됨", "description": "limits.memory를 넘었다. kubectl top·describe로 사용량과 제한을 비교한다."},
+      "startsAt": "2026-11-17T05:35:50Z",
+      "endsAt": "0001-01-01T00:00:00Z"
+    },
+    {
+      "status": "firing",
+      "labels": {"alertname": "ContainerOOMKilled", "container": "grafana-sc-datasources", "endpoint": "http", "instance": "10.42.0.43:8080", "job": "kube-state-metrics", "namespace": "monitoring", "pod": "monitoring-grafana-58967c8fc-2zssf", "prometheus": "monitoring/monitoring-kube-prometheus-prometheus", "reason": "OOMKilled", "service": "monitoring-kube-state-metrics", "severity": "warning", "uid": "d0a236c6-76dd-4446-a5a5-041dea2e07f4"},
+      "annotations": {"summary": "monitoring/monitoring-grafana-58967c8fc-2zssf (grafana-sc-datasources) 메모리 초과로 종료됨", "description": "limits.memory를 넘었다. kubectl top·describe로 사용량과 제한을 비교한다."},
+      "startsAt": "2026-11-17T05:36:31Z",
+      "endsAt": "0001-01-01T00:00:00Z"
+    }
+  ],
+  "groupLabels": {"alertname": "ContainerOOMKilled", "namespace": "monitoring"},
+  "commonLabels": {"alertname": "ContainerOOMKilled", "namespace": "monitoring", "pod": "monitoring-grafana-58967c8fc-2zssf", "reason": "OOMKilled", "severity": "warning"},
+  "commonAnnotations": {"description": "limits.memory를 넘었다. kubectl top·describe로 사용량과 제한을 비교한다."},
+  "externalURL": "http://monitoring-kube-prometheus-alertmanager.monitoring:9093"
+}

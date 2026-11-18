@@ -1,0 +1,17 @@
+{
+  "receiver": "discord",
+  "status": "resolved",
+  "alerts": [
+    {
+      "status": "resolved",
+      "labels": {"alertname": "PodRestartBurst", "container": "application-controller", "namespace": "argocd", "pod": "argocd-application-controller-0", "severity": "warning"},
+      "annotations": {"summary": "argocd/argocd-application-controller-0 (application-controller) 15분에 5번 재시작", "description": "kubectl logs --previous로 직전 종료 원인을 본다."},
+      "startsAt": "2026-11-17T05:45:08Z",
+      "endsAt": "2026-11-17T05:58:38Z"
+    }
+  ],
+  "groupLabels": {"alertname": "PodRestartBurst", "namespace": "argocd"},
+  "commonLabels": {"alertname": "PodRestartBurst", "container": "application-controller", "namespace": "argocd", "pod": "argocd-application-controller-0", "severity": "warning"},
+  "commonAnnotations": {"description": "kubectl logs --previous로 직전 종료 원인을 본다."},
+  "externalURL": "http://monitoring-kube-prometheus-alertmanager.monitoring:9093"
+}
