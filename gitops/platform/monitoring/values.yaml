@@ -99,12 +99,40 @@ alertmanager:
         discord_configs:
           - webhook_url_file: /etc/alertmanager/secrets/alertmanager-receivers/discord-webhook-url
             send_resolved: true
+            # 짧은 한국어 형식 (아래 templateFiles). 수집용 라벨(endpoint·instance·uid 등)은 빼고 대상·이유·시각만
+            title: '{{ template "homelab.discord.title" . }}'
+            message: '{{ template "homelab.discord.message" . }}'
       - name: healthchecks
         webhook_configs:
           - url_file: /etc/alertmanager/secrets/alertmanager-receivers/healthchecks-ping-url
             send_resolved: false
     templates:
       - /etc/alertmanager/config/*.tmpl
+  # Discord 알림 문구. 테스트: scripts/test-am-templates.sh(실제 받았던 알림 → 기대 문구, static-checks에서 실행)
+  #   제목: 🔥 warning / 🚨 critical / ✅ 해결 · 알림 이름 · 등급 · 건수
+  #   본문: 줄마다 문제 대상과 이유 · 한국 시간. 직접 만든 규칙은 summary(대상 포함), 차트 기본 규칙은 영어 summary가
+  #         한 줄 일반 문장이라 대상이 담긴 description. 맨 아래에 직접 만든 규칙은 "조치"(description), 기본 규칙은 runbook 링크
+  #   한국 시간 = UTC + 9시간(서머타임 없음). tz 함수는 컨테이너의 시간대 데이터에 의존해서 쓰지 않는다
+  templateFiles:
+    homelab.tmpl: |-
+      {{ define "homelab.kst" }}{{ (.Add 32400000000000).Format "15:04" }}{{ end }}
+      {{ define "homelab.line" }}{{ if .Annotations.runbook_url }}{{ .Annotations.description }}{{ else }}{{ .Annotations.summary }}{{ end }}{{ end }}
+      {{ define "homelab.discord.title" -}}
+      {{- if .Alerts.Firing -}}
+      {{ if eq .CommonLabels.severity "critical" }}🚨{{ else }}🔥{{ end }} {{ .CommonLabels.alertname }} · {{ .CommonLabels.severity }} · {{ len .Alerts.Firing }}건
+      {{- if .Alerts.Resolved }} (해결 {{ len .Alerts.Resolved }}건){{ end }}
+      {{- else -}}
+      ✅ 해결 · {{ .CommonLabels.alertname }} · {{ len .Alerts.Resolved }}건
+      {{- end }}
+      {{- end }}
+      {{ define "homelab.discord.message" -}}
+      {{- range $i, $a := .Alerts.Firing }}{{ if $i }}{{ "\n" }}{{ end }}• {{ template "homelab.line" $a }} · {{ template "homelab.kst" $a.StartsAt }}{{ end }}
+      {{- with .Alerts.Firing }}{{ with index . 0 }}
+      {{ if .Annotations.runbook_url }}참고: {{ .Annotations.runbook_url }}{{ else if .Annotations.description }}조치: {{ .Annotations.description }}{{ end }}
+      {{- end }}{{ end }}
+      {{- if and .Alerts.Firing .Alerts.Resolved }}{{ "\n" }}✅ 해결{{ end }}
+      {{- range $i, $a := .Alerts.Resolved }}{{ if or $i $.Alerts.Firing }}{{ "\n" }}{{ end }}• {{ template "homelab.line" $a }} · {{ template "homelab.kst" $a.EndsAt }}{{ end }}
+      {{- end }}
 
 # --- prometheus-operator ---
 prometheusOperator:
@@ -169,6 +197,9 @@ prometheus-node-exporter:
 
 # --- Grafana (메모리가 빠듯하면 가장 먼저 뺄 후보, §7) ---
 grafana:
+  # 차트 기본 대시보드의 시간대. 기본값 utc라 "14:20"을 입력하면 한국 시간 23:20으로 해석됐다(2026-11-18).
+  # browser = 접속한 브라우저(한국 시간) 기준
+  defaultDashboardsTimezone: browser
   admin:
     existingSecret: grafana-admin   # secrets.sops.yaml. 차트 기본 비밀번호를 쓰지 않는다
     userKey: admin-user

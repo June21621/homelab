@@ -1,0 +1,4 @@
+🚨 EtcdS3SnapshotStale · critical · 1건
+---
+• 마지막 etcd S3 스냅샷이 7시간 넘게 없음 · 19:00
+조치: k3s 정기 스냅샷(6시간)이 S3에 올라가지 않았거나 지표 수집이 고장 났다. 확인: kubectl get etcdsnapshotfiles.k3s.cattle.io, 미니 PC의 journalctl -u k3s | grep -i s3
