@@ -244,8 +244,34 @@ def check_alertmanager(cfg):
     return errors
 
 
+# 6-4: 아무 규칙도 쓰지 않는 API 서버·etcd 응답 시간 히스토그램. 24시간 기준 전체 시계열의 53%(63,444/120,637)
+DROPPED_HISTOGRAMS = (
+    "apiserver_request_duration_seconds_bucket",
+    "apiserver_request_sli_duration_seconds_bucket",
+    "apiserver_request_body_size_bytes_bucket",
+    "apiserver_response_sizes_bucket",
+    "apiserver_watch_list_duration_seconds_bucket",
+    "apiserver_watch_cache_read_wait_seconds_bucket",
+    "etcd_request_duration_seconds_bucket",
+)
+
+
+def check_apiserver_drop(docs):
+    """API 서버 ServiceMonitor가 히스토그램 7종을 이름만으로(구간 le와 상관없이) 통째로 버리는지"""
+    sms = [d for d in docs if d.get("kind") == "ServiceMonitor" and d["metadata"]["name"].endswith("-apiserver")]
+    if not sms:
+        return ["apiserver ServiceMonitor 없음"]
+    drops = []
+    for ep in sms[0]["spec"].get("endpoints") or []:
+        for r in ep.get("metricRelabelings") or []:
+            if r.get("action") == "drop" and r.get("sourceLabels") == ["__name__"]:
+                drops.append(re.compile(r["regex"]))  # Prometheus relabel 정규식은 전체 일치
+    return [f"히스토그램 {n}을 버리지 않음 (apiserver metricRelabelings)"
+            for n in DROPPED_HISTOGRAMS if not any(p.fullmatch(n) for p in drops)]
+
+
 def check_monitoring(docs):
-    errors = check_resources(docs) + check_cr_resources(docs)
+    errors = check_resources(docs) + check_cr_resources(docs) + check_apiserver_drop(docs)
     for d in docs:
         name = d.get("metadata", {}).get("name", "")
         if d.get("kind") in ("Service", "ServiceMonitor") and any(t in name for t in DISABLED_SCRAPE):

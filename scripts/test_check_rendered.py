@@ -58,8 +58,23 @@ def am_secret(cfg):
     }
 
 
+HISTOGRAM_DROP = {
+    "action": "drop",
+    "sourceLabels": ["__name__"],
+    "regex": "(apiserver_request_duration_seconds|apiserver_request_sli_duration_seconds|apiserver_request_body_size_bytes"
+             "|apiserver_response_sizes|apiserver_watch_list_duration_seconds|apiserver_watch_cache_read_wait_seconds"
+             "|etcd_request_duration_seconds)_bucket",
+}
+
+
+def apiserver_sm(relabelings):
+    return {"kind": "ServiceMonitor", "metadata": {"name": "monitoring-kube-prometheus-apiserver"},
+            "spec": {"endpoints": [{"port": "https", "metricRelabelings": relabelings}]}}
+
+
 def good_docs(cfg=None):
     return [
+        apiserver_sm([HISTOGRAM_DROP]),
         {"kind": "Prometheus", "metadata": {"name": "monitoring-kube-prometheus-prometheus"},
          "spec": {"retention": "7d", "resources": RES}},
         {"kind": "Alertmanager", "metadata": {"name": "monitoring-kube-prometheus-alertmanager"},
@@ -166,6 +181,24 @@ def test_monitoring_app_no_finalizer():
     assert any("monitoring" in e for e in cr.check_apps([app]))
     app["metadata"].pop("finalizers")
     assert cr.check_apps([app]) == []
+
+
+@pytest.mark.parametrize("relabelings", [
+    [],  # drop 없음
+    [{**HISTOGRAM_DROP, "action": "keep"}],  # drop이 아님
+    [{**HISTOGRAM_DROP, "regex": "(apiserver_request_duration_seconds)_bucket"}],  # 7종 중 1종만
+    [{**HISTOGRAM_DROP, "sourceLabels": ["__name__", "le"]}],  # 차트 기본처럼 일부 구간(le)만 버림
+])
+def test_apiserver_histograms_dropped(relabelings):
+    """6-4: API 서버·etcd 응답 시간 히스토그램 7종(시계열의 53%)은 아무 규칙도 안 쓴다 → 수집 단계에서 통째로 버린다"""
+    docs = [d for d in good_docs() if d["kind"] != "ServiceMonitor"] + [apiserver_sm(relabelings)]
+    errors = cr.check_monitoring(docs)
+    assert any("히스토그램" in e for e in errors), errors
+
+
+def test_apiserver_servicemonitor_missing():
+    docs = [d for d in good_docs() if d["kind"] != "ServiceMonitor"]
+    assert any("apiserver" in e for e in cr.check_monitoring(docs))
 
 
 def test_argocd_has_no_servicemonitor():

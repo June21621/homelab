@@ -34,6 +34,17 @@ defaultRules:
 windowsMonitoring:
   enabled: false
 
+# --- API 서버·etcd 응답 시간 히스토그램 7종은 수집 단계에서 버린다 (6-4) ---
+# 위에서 API SLO 규칙을 꺼도 원본 지표는 계속 쌓인다. 24시간 기준 전체 시계열의 53%(63,444/120,637)였고
+# 남긴 규칙 중 이 지표를 쓰는 것은 없다. 대가: Grafana "API server" 대시보드의 지연 시간 그래프가 빈다.
+# 차트 기본값은 일부 구간(le)만 버리는데, 이 목록이 그것을 대체한다(이름 기준으로 통째로 버림)
+kubeApiServer:
+  serviceMonitor:
+    metricRelabelings:
+      - action: drop
+        sourceLabels: [__name__]
+        regex: (apiserver_request_duration_seconds|apiserver_request_sli_duration_seconds|apiserver_request_body_size_bytes|apiserver_response_sizes|apiserver_watch_list_duration_seconds|apiserver_watch_cache_read_wait_seconds|etcd_request_duration_seconds)_bucket
+
 # --- Prometheus ---
 prometheus:
   prometheusSpec:
