@@ -181,10 +181,12 @@
 - [ ] AWS 액세스 키 교체 주기 정하기 (예: 1년)
 - [ ] PAT `homelab-terraform-github-pat` 갱신 (2027-02-10 만료 전)
 - [x] 6단계: Discord 웹훅을 `gitops/`에 SOPS로 (KSOPS 첫 실사용, 2026-11-17. 클러스터 키만으로 복호화 확인)
-- [ ] 6-4: API·etcd 히스토그램 drop — 2026-11-18 15:45 이후 24시간 기준값 측정 → drop PR → 다시 측정(검증 기록 §7)
+- [x] 6-4: API·etcd 히스토그램 drop — 7종 drop 후 절반만 줄어 원인 확인: k3s kubelet 주소가 API 서버·etcd 지표까지 내보내 중복 수집.
+  kubelet 쪽 `(apiserver|etcd)_.+` drop 추가. 시계열 120,637 → 46,740(−61%), Prometheus 메모리 최대 550 → 398Mi (2026-11-19, 검증 기록 §7)
+- [ ] (선택) 2026-11-26 무렵 Prometheus 디스크 재측정: 변경 전 블록이 보존 7일에서 빠진 뒤(변경 직후 506MiB)
 - [ ] 앱 repo(커넥티드카 등)에서 PostSync 훅 스모크 테스트 추가 — 실패하면 `ArgoCDSyncFailed`로 Discord 알림
 - [ ] Grafana에서 만든 대시보드는 재시작하면 사라짐(저장소 없음) → 오래 쓸 대시보드는 ConfigMap으로 Git에
-- [ ] (선택) Discord 알림 메시지를 짧은 한국어 템플릿으로 (`alertmanager.config.templates`)
+- [x] (선택) Discord 알림 메시지를 짧은 한국어 템플릿으로 (`alertmanager.config.templates`, 2026-11-18)
 - [ ] `monitoring` 앱을 일부러 없앨 때: finalizer가 없어 Application만 지워지고 리소스는 남는다. 남은 리소스와 prometheus-operator CRD를
   사용자 확인 후 정리(CRD를 지우면 모든 ServiceMonitor·PrometheusRule이 함께 사라짐)
 - [ ] static-checks에 kubeconform(매니페스트 스키마)·Trivy(이미지 취약점) 추가 검토

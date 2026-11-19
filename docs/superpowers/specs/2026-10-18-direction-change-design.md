@@ -83,7 +83,7 @@ ArgoCD·모니터링 줄은 6단계 실측(2026-11-17, 노드 전체 사용 3.8G
 |---|---|---|
 | k3s(server+containerd+Traefik+CoreDNS+metrics-server) | **실측 ~0.9Gi** | k3s-server 659Mi, containerd 164Mi, 내장 파드 4개 ~64Mi. 호스트 전체 사용 733Mi → 1,373Mi |
 | ArgoCD(server, repo-server+KSOPS, application-controller, redis) | **실측 ~0.5Gi** | 2026-11-17 monitoring 추가 후 controller 386~490Mi(limit 1Gi), 나머지 ~110Mi. dex·notifications·applicationset 끔 |
-| Prometheus | **실측 ~0.4Gi** | 396Mi(설치 70분 뒤, 시계열 12.1만), limit 1Gi. 보존 7일, scrape 60초. API 히스토그램 drop 후 갱신(6-4) |
+| Prometheus | **실측 ~0.36Gi** | 평균 356Mi·최대 398Mi(2026-11-19, 시계열 4.7만), limit 1Gi. API 히스토그램 drop·k3s kubelet 중복 제거 전 평균 401Mi·최대 550Mi(시계열 12.1만). 보존 7일, scrape 60초 |
 | Grafana / Alertmanager / prometheus-operator / kube-state-metrics / node-exporter | **실측 ~0.55Gi** | Grafana 3컨테이너 432Mi(시작 시 OOM으로 limit 512Mi), Alertmanager 28Mi, operator 22Mi, KSM 44Mi, node-exporter 8Mi |
 | cloudflared | ~50Mi | |
 | PR 프리뷰 오퍼레이터 | ~100Mi | |
