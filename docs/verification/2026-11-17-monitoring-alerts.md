@@ -4,7 +4,8 @@
 - 대상: `monitoring` 앱(kube-prometheus-stack 92.17.0), Alertmanager → Discord, Watchdog → healthchecks.io
 - 관련: 설계 `docs/superpowers/specs/2026-11-16-step6-monitoring-design.md`, ADR 0010,
   `scripts/alert-test.sh`(`make alert-test`), 규칙 `gitops/platform/monitoring/rules/`
-- PR: 6-1 검사 도구, 6-2 monitoring 앱, 6-2b 메모리 제한, 6-3a ArgoCD 지표 Service, 6-3b ArgoCD 수집·규칙
+- PR: 6-1 검사 도구, 6-2 monitoring 앱, 6-2b 메모리 제한, 6-3a ArgoCD 지표 Service, 6-3b ArgoCD 수집·규칙,
+  6-4a Discord 짧은 형식·Grafana 한국 시간, 6-4b API 히스토그램 drop, 6-4c kubelet 중복 제거
 
 ## 목적
 
@@ -101,11 +102,38 @@
 
 - 렌더링 기준 monitoring 상주 컴포넌트 합계: requests 약 976Mi / limits 약 2.2Gi(6-2b 반영, 설정 리로더·Grafana 사이드카 포함)
 - 시계열 121,199개 중 API 서버·etcd 응답 시간 히스토그램(`*_bucket`) 7종이 약 6.3만 개 → 6-4에서 수집 단계 drop 후 전후 비교(§7)
+- 24시간 뒤(11-18 16:08): 모든 앱 Healthy, 재시작 0, Watchdog 외 알림 0(오탐 없음), 노드 3,759Mi. 짝수 정각 디스크 쓰기 봉우리는
+  Prometheus compaction(2시간)과 일치, 00·06·12·18시는 etcd 스냅샷과 겹침. 디스크 바쁨 최대 약 1~2%
 
-## 7. API 히스토그램 drop 전후 (6-4)
+## 7. API 히스토그램 drop과 k3s 중복 수집 제거 전후 (6-4b·6-4c)
 
-- 전(15:45, 설치 약 70분 뒤): head series 121,199 / Prometheus 396Mi
-- 24시간 측정 후 drop PR을 넣고 이 절을 채운다
+### 계획과 실제
+- 계획(6-4b): 아무 규칙도 쓰지 않는 API 서버·etcd 응답 시간 히스토그램 7종(`*_bucket`)을 apiserver 수집에서 drop.
+  24시간 기준 63,444개 = 전체 120,637개의 53%
+- 반영(11-18 17:55) 후 7종이 63,444 → **40,458**까지만 줄었다. 남은 것은 전부 `job="kubelet"`
+- **발견: k3s는 API 서버·kubelet·etcd가 `k3s server` 한 프로세스라, kubelet 지표 주소(:10250/metrics)가 합쳐진 지표 전체를 내보낸다.**
+  같은 `apiserver_*`·`etcd_*` 지표를 apiserver 수집과 kubelet 수집에서 **두 번 저장**하고 있었다(kubelet job 61,746개 중 중복 51,103개).
+  설계 때 "k3s는 한 프로세스라 scheduler 등을 따로 수집할 주소가 없다"는 면만 보고, 반대로 "한 주소가 전부를 내보낸다"는 면은 놓쳤다
+- 6-4c: kubelet `/metrics` 수집에서 이름이 `apiserver_`·`etcd_`로 시작하는 사본을 drop(원본은 apiserver job, API 서버 규칙은 모두 `job="apiserver"`).
+  차트 기본 kubelet drop(저장소 작업 히스토그램)은 values가 목록을 대체하므로 함께 옮겼다. 검사기가 중복 drop·고유 지표 유지·기본 drop 유지를 강제
+- 반영: ServiceMonitor 갱신 18:18:46 → Prometheus 설정 재로드 18:19:49 → 사본·7종 0 at 18:22:01
+
+### 결과 (전: 11-18 16:08, 24시간 / 후: 11-19 19:16, 변경 뒤 약 20시간)
+
+| 항목 | 전 | 후 | 변화 |
+|---|---|---|---|
+| 시계열(head series) | 120,637 | 46,740 | **−61%** |
+| 초당 수집 샘플 | 2,102 | 871 | −59% |
+| Prometheus 메모리 평균 | 401Mi | 356Mi | −11% |
+| Prometheus 메모리 최대 | 550Mi | 398Mi | **−28%** |
+| TSDB 디스크 | 519MiB | 506MiB | 거의 같음(아래) |
+| 2시간 compaction 때 디스크 쓰기 | 0.7~1.8MiB/s | 0.34~1.3MiB/s | 감소 |
+| 오탐·재시작 | 0 | 0 | — |
+
+- 메모리 평균이 시계열만큼 줄지 않는 이유: 시계열 수와 무관한 고정 몫(최소 314Mi)이 크고, Go 런타임이 쓴 메모리를 바로 돌려주지 않는다.
+  대신 compaction 때의 최대값이 크게 줄어 limits(1Gi)까지 여유가 커졌다
+- 디스크는 7일 보존 안에 변경 전 블록이 남아 있어 일주일에 걸쳐 줄어든다(새로 쌓이는 양은 약 41%)
+- 대가: Grafana "API server" 대시보드의 지연 시간 그래프가 빈다. 남긴 규칙(차트 기본·직접 만든 것) 중 drop한 지표를 쓰는 것은 없다(렌더링으로 확인)
 
 ## 남은 것
 

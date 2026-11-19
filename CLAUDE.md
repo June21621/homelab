@@ -22,7 +22,7 @@ N100 미니 PC를 24시간 돌아가는 **서비스 배포용 GitOps k3s 클러�
   - ACL(2026-10-18): member→tag:server는 tcp:22·6443·icmp만, member→self 전부. 기본 전부 허용 규칙 삭제
 - k3s v1.36.5+k3s1 단일 노드 (2026-10-18 설치). kubeconfig는 관리 PC `~/.kube/homelab.yaml`
 - ArgoCD(argo-cd 차트 10.10.5) 자기 관리, 메모리 약 0.5GiB(controller limit 1Gi). 서비스: portfolio prod·lab
-- 모니터링: kube-prometheus-stack 92.17.0(앱 `monitoring`) 약 0.95GiB. 노드 전체 사용 3.8GiB (2026-11-17)
+- 모니터링: kube-prometheus-stack 92.17.0(앱 `monitoring`) 약 0.95GiB(Prometheus 평균 356Mi, 시계열 약 4.7만). 노드 전체 약 4.0GiB (2026-11-19)
 - 절전 차단됨 (sleep/suspend/hibernate target mask)
 
 ## 아키텍처 결정사항
@@ -39,7 +39,7 @@ N100 미니 PC를 24시간 돌아가는 **서비스 배포용 GitOps k3s 클러�
 | CI | GitHub Actions 호스티드 러너 → GHCR. 앱 repo의 Actions는 homelab에 이미지 태그 **PR만** 열고, 태그 줄만 바뀐 PR은 경로 검사 통과 시 자동 병합. 쓰기 자격 증명은 GitHub App(단기 토큰). 자동 병합 조건: 필수 검사 `tag-pr-guard`(main 쪽 코드로 실행)·`static-checks`, ruleset은 Terraform(`terraform/github/`), 우회 없음. App `june21621-tag-bump`(Workflows 권한 없음). 태그 PR은 `newTag`·`digest` 두 줄만(이미지는 다이제스트로 배포). 봇은 `bump/**` 브랜치에만 쓸 수 있음(ruleset `bot-only-bump-branches`). App 키는 앱 repo environment `tag-bump`(main만) |
 | CD | 클러스터 안 ArgoCD가 pull. 롤백은 git revert |
 | 외부 노출 | Cloudflare Tunnel(아웃바운드만). 인바운드 포트 없음, k3s API 공개 노출 없음 |
-| 내부 관측 | 경량 kube-prometheus-stack(보존 7일), Alertmanager → Discord(warning·critical, URL은 Secret 파일 경로로만). Grafana는 `make grafana-ui`. k3s 내장 컴포넌트·API SLO 기본 규칙 끔, 직접 만든 규칙은 promtool 테스트(ADR 0010). 로그 스택(Loki) 없음 |
+| 내부 관측 | 경량 kube-prometheus-stack(보존 7일), Alertmanager → Discord(warning·critical, URL은 Secret 파일 경로로만). Grafana는 `make grafana-ui`. k3s 내장 컴포넌트·API SLO 기본 규칙 끔, 직접 만든 규칙은 promtool 테스트(ADR 0010). 안 쓰는 API 히스토그램과 k3s kubelet 중복 수집은 수집 단계에서 drop. 로그 스택(Loki) 없음 |
 | 외부 관측 | 호스트에 CloudWatch Agent + SSM 하이브리드 활성화. 노드 지표 10개 이하, 하트비트 알람(TreatMissingData=breaching) → SNS 이메일. 월 $5 이하 |
 | 감시자 감시 | Alertmanager Watchdog → healthchecks.io (dead man's switch). 끊기면 **이메일**(Discord 아님), 감지 약 15분 |
 | 시크릿 | SOPS + age로 확정(ADR 0003). 호스트는 Ansible `community.sops`가 관리 PC에서 복호화해 전달, 클러스터는 ArgoCD KSOPS + **클러스터 전용 age 키**(`gitops/`만 풀 수 있음, ADR 0008) |
@@ -101,7 +101,8 @@ homelab/
    - 결과: 테스트 알림 30초 안에 Discord·5분 뒤 해결 알림, Watchdog 끊김 15분 안에 healthchecks.io 이메일·해제 1분 안에 복구(2026-11-17,
      `docs/verification/2026-11-17-monitoring-alerts.md`). 첫 설치에서 Grafana·ArgoCD controller OOM을 직접 만든 규칙이 알림 →
      controller가 자기 메모리 수정을 못 적용하는 교착을 Git과 같은 값 kubectl patch + 파드 삭제로 복구(약 7분). ADR 0010
-   - 남음: API·etcd 히스토그램 drop 전후 측정(6-4, 24시간 기준값 뒤)
+   - 안 쓰는 API 히스토그램 drop + k3s kubelet 중복 수집 제거로 시계열 12.1만 → 4.7만(−61%), Prometheus 메모리 최대 550 → 398Mi(2026-11-19).
+     Discord 문구는 짧은 한국어 템플릿(실제 알림으로 테스트)
 7. **CloudWatch + Terraform(AWS) + Cloudflare Tunnel** — SSM 하이브리드, 하트비트 알람 → SNS 이메일, Budgets $5, Tailscale ACL Terraform 이관
    - 확인: 에이전트를 멈추면 알람 이메일 수신, 외부에서 서비스 URL 접속(인바운드 포트 0)
 8. **PR 프리뷰 오퍼레이터** — 쿼터·동시성 상한·TTL·PR 코멘트 상태 보고, README에 ApplicationSet PR Generator와 비교
