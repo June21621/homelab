@@ -133,8 +133,22 @@
 - 메모리 평균이 시계열만큼 줄지 않는 이유: 시계열 수와 무관한 고정 몫(최소 314Mi)이 크고, Go 런타임이 쓴 메모리를 바로 돌려주지 않는다.
   대신 compaction 때의 최대값이 크게 줄어 limits(1Gi)까지 여유가 커졌다
 - 디스크는 7일 보존 안에 변경 전 블록이 남아 있어 일주일에 걸쳐 줄어든다(새로 쌓이는 양은 약 41%)
-- 대가: Grafana "API server" 대시보드의 지연 시간 그래프가 빈다. 남긴 규칙(차트 기본·직접 만든 것) 중 drop한 지표를 쓰는 것은 없다(렌더링으로 확인)
+- 대가: Grafana "API server" 대시보드의 지연 시간 그래프가 빈다(가용성·오류 예산·SLI 패널은 6-2에서 SLO 기록 규칙을 끈 때부터 비어 있다). 남긴 규칙(차트 기본·직접 만든 것) 중 drop한 지표를 쓰는 것은 없다(렌더링으로 확인)
+
+## 8. 최종 리뷰 반영 (6-7)
+
+6단계 전체(PR #33~#42)를 독립 리뷰어가 다시 읽었다. Critical 0건, 계획의 리뷰 초점 5개 모두 통과. 고친 것:
+
+- **S3 스냅샷 "지표 없음" 오탐**: `absent()`를 `EtcdS3SnapshotStale`에 `or`로 붙여 `for` 없이 울렸다. KSM·Prometheus가 재시작하면 지표가
+  1~2분 비어 거짓 critical이 나갈 수 있다(24시간 무오탐은 재시작이 없던 기간). `EtcdS3SnapshotMetricMissing`(`for: 10m`)으로 분리,
+  promtool로 "5분 조용·11분 critical" 확인. 7시간 규칙은 시각 비교라 그대로 바로 울린다
+- 검사 실패 시 이유가 안 보이던 `verify-argocd.sh`가 실패한 명령의 출력을 보여 준다
+- `rules/` 폴더와 `kustomization.yaml` 목록을 비교한다(목록에서 빠진 규칙은 테스트는 통과하고 배포만 안 되던 빈틈)
+- `init-monitoring-secrets.sh`의 비상 안내가 비밀값 전체 대신 비밀번호 한 줄만 꺼낸다
 
 ## 남은 것
 
 - 실제 케이블을 뽑는 유선 링크 알림, S3 스냅샷 중단은 9단계에서 실제로 재현(지금은 promtool 단위 테스트로만 확인)
+  - 가설(최종 리뷰): node-exporter는 유선 주소로 수집된다. 케이블이 빠질 때 DHCP 주소도 내려가면 수집 자체가 실패해
+    `node_network_carrier == 0`이 안 보이고 `WiredLinkDown` 대신 TargetDown·KubeletDown만 올 수 있다. 9단계에서 확인하고,
+    그렇다면 `absent_over_time` 등을 보조 조건으로 추가

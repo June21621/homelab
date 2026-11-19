@@ -17,12 +17,13 @@ MONITORING_VALUES=gitops/platform/monitoring/values.yaml
 MONITORING_RULES=gitops/platform/monitoring/rules
 
 fails=0
-check() {  # check <설명> <명령...>
-  local desc="$1"; shift
-  if "$@" >/dev/null 2>&1; then
+check() {  # check <설명> <명령...>  통과하면 한 줄, 실패하면 명령 출력의 마지막 40줄을 들여 써서 보여 준다
+  local desc="$1" out; shift
+  if out="$("$@" 2>&1)"; then
     echo "PASS  ${desc}"
   else
     echo "FAIL  ${desc}"
+    tail -n 40 <<<"${out}" | sed 's/^/      /'
     fails=$((fails + 1))
   fi
 }
@@ -114,6 +115,19 @@ monitoring_am_templates_ok() {
   return "${rc}"
 }
 
+# rules/*.yaml과 kustomization.yaml의 resources 목록이 같아야 한다.
+# check-prom-rules.sh는 폴더를 통째로 읽으므로, 목록에서 빠진 규칙도 테스트는 통과하고 배포만 안 된다
+monitoring_rules_listed() {
+  local kust="${MONITORING_RULES}/../kustomization.yaml" in_dir in_kust f
+  in_dir="$(for f in "${MONITORING_RULES}"/*.yaml; do echo "./rules/$(basename "${f}")"; done | sort)"
+  in_kust="$(grep -oE '\./rules/[^[:space:]]+\.yaml' "${kust}" | sort)"
+  if [[ "${in_dir}" != "${in_kust}" ]]; then
+    echo "rules/ 폴더와 kustomization.yaml resources가 다름 (<폴더, >kustomization):"
+    diff <(echo "${in_dir}") <(echo "${in_kust}") || true
+    return 1
+  fi
+}
+
 monitoring_checks() {
   # 6-2 전에는 monitoring 앱이 없다. CI에는 age 키·ksops가 없어 Kustomize(KSOPS)는 렌더링하지 않는다(설계 §3.8)
   if [[ ! -f "${MONITORING_APP}" ]]; then
@@ -129,6 +143,7 @@ static_checks() {
   check "검사기 check_rendered.py 테스트" uv run --quiet --script scripts/test_check_rendered.py
   check "검사기 check-prom-rules.sh 테스트" bash scripts/test-check-prom-rules.sh
   check "직접 만든 알림 규칙: 문법·severity 라벨·단위 테스트" bash scripts/check-prom-rules.sh "${MONITORING_RULES}"
+  check "직접 만든 알림 규칙이 모두 kustomization.yaml에 있음(배포됨)" monitoring_rules_listed
   monitoring_checks
   check "Terraform이 차트 버전·values·루트 앱을 gitops/에서 읽음" tf_reads_single_source
   check "argo-cd 차트 렌더링: 끈 컴포넌트 없음, 모든 컨테이너 limits" argocd_render_ok

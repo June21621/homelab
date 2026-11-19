@@ -11,15 +11,26 @@ spec:
     - name: homelab.backup
       rules:
         - alert: EtcdS3SnapshotStale
-          # 정기 스냅샷은 6시간마다. 7시간이 넘었거나 S3 스냅샷 지표가 아예 없으면(KSM·RBAC 고장 포함) 울린다
+          # 정기 스냅샷은 6시간마다. 마지막 S3 스냅샷이 7시간을 넘으면 바로 울린다(시각 비교라 잠깐 끊겨도 오탐 없음)
           expr: |
             (time() - max(kube_customresource_etcdsnapshotfile_created_timestamp_seconds{location=~"s3://.*"})) > 7 * 3600
-            or
-            absent(kube_customresource_etcdsnapshotfile_created_timestamp_seconds{location=~"s3://.*"})
           labels:
             severity: critical
           annotations:
             summary: 마지막 etcd S3 스냅샷이 7시간 넘게 없음
             description: >-
-              k3s 정기 스냅샷(6시간)이 S3에 올라가지 않았거나 지표 수집이 고장 났다.
+              k3s 정기 스냅샷(6시간)이 S3에 올라가지 않았다.
               확인: kubectl get etcdsnapshotfiles.k3s.cattle.io, 미니 PC의 journalctl -u k3s | grep -i s3
+        - alert: EtcdS3SnapshotMetricMissing
+          # S3 스냅샷 지표가 아예 없음(KSM 설정·RBAC 고장, 또는 S3 스냅샷이 하나도 없음).
+          # KSM·Prometheus가 재시작하면 지표가 1~2분 빌 수 있어, 10분 계속될 때만 울린다(6단계 최종 리뷰)
+          expr: |
+            absent(kube_customresource_etcdsnapshotfile_created_timestamp_seconds{location=~"s3://.*"})
+          for: 10m
+          labels:
+            severity: critical
+          annotations:
+            summary: etcd S3 스냅샷 지표가 10분 넘게 없음
+            description: >-
+              S3 스냅샷이 하나도 없거나 kube-state-metrics가 ETCDSnapshotFile을 읽지 못한다(설정·RBAC 고장).
+              확인: kubectl get etcdsnapshotfiles.k3s.cattle.io, kube-state-metrics 파드 로그
