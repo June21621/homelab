@@ -64,5 +64,7 @@ if command -v clip.exe >/dev/null 2>&1; then
   printf '%s' "${grafana_password}" | clip.exe
   echo "Grafana 관리자 비밀번호(사용자 admin)를 클립보드에 복사했습니다. Bitwarden \"homelab-grafana-admin\"에 붙여넣어 저장하세요."
 else
-  echo "clip.exe가 없어 비밀번호를 복사하지 못했습니다. 저장은: sops -d ${out} 로 확인 후 Bitwarden에" >&2
+  # sops -d 전체를 띄우면 Discord·healthchecks URL까지 화면에 나온다. 비밀번호 한 줄만 꺼내도록 안내한다
+  echo "clip.exe가 없어 비밀번호를 복사하지 못했습니다." >&2
+  echo "  sops -d ${out} | grep 'admin-password:'  (이 한 줄만 보임) → Bitwarden에 저장한 뒤 clear" >&2
 fi

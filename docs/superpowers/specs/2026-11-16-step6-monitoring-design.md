@@ -148,7 +148,8 @@ PR(metricRelabelings drop)을 넣고 다시 잰다. 전후 숫자를 ADR과 검�
 | `ArgoCDAppDegraded` | `argocd_app_info{health_status="Degraded"}` | 10m | warning |
 | `ArgoCDAppOutOfSync` | `argocd_app_info{sync_status="OutOfSync"}` | 15m | warning |
 | 디스크 | 기본 `NodeFilesystemSpaceFillingUp`·`AlmostOutOfSpace` 그대로 | | 기본 |
-| `EtcdS3SnapshotStale` | `time() - max(S3 스냅샷 생성 시각) > 7h`, 지표가 아예 없어도 울림(`absent`) | 0 | **critical** |
+| `EtcdS3SnapshotStale` | `time() - max(S3 스냅샷 생성 시각) > 7h` | 0 | **critical** |
+| `EtcdS3SnapshotMetricMissing` | S3 스냅샷 지표가 아예 없음(`absent`). 처음엔 위 규칙에 `or`로 붙였으나 KSM 재시작 때 오탐이 나 분리(6단계 최종 리뷰) | 10m | **critical** |
 | `WiredLinkDown` | `node_network_carrier{device="enp3s0"} == 0` | 2m | warning |
 | `WiredLinkFlapping` | `changes(node_network_carrier_changes_total{device="enp3s0"}[1h]) > 3` | 0 | warning |
 

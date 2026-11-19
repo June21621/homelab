@@ -174,6 +174,8 @@
 - [ ] 7단계: Tailscale ACL(tagOwners, grants 2개)을 Terraform으로 이관하고 `tests`(22·6443 허용, 10250·80·443 차단) 추가
 - [ ] Wi-Fi 예비 경로 설정(비밀번호 포함)을 SOPS + Ansible로 옮기기 (SOPS 준비됨, 지금 가능)
 - [x] 6단계: 유선 링크 끊김 알림 (`WiredLinkDown`·`WiredLinkFlapping` + promtool 테스트, 2026-11-17. 실제 케이블 분리는 9단계)
+- [ ] 9단계 유선 케이블 분리 검증 때 확인: 수집 자체가 실패해 `WiredLinkDown` 대신 TargetDown·KubeletDown만 오는지.
+  그렇다면 보조 조건(`absent_over_time`) 추가 (6단계 최종 리뷰, 검증 기록 "남은 것")
 - [ ] 유선 LAN 기기에서 `make verify-k3s`로 LAN 쪽 포트(6443·80·443·10250·2379·2380) 차단 확인 (관리 PC는 무선 격리로 건너뜀)
 - [ ] 서비스에 DB가 생기면 볼륨 데이터 백업(restic 등) 검토 — etcd 스냅샷에는 볼륨이 없음
 - [ ] Google Authenticator 클라우드 백업 확인, 또는 AWS root에 두 번째 MFA 등록
